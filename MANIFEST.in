@@ -1,0 +1,5 @@
+include README.md LICENSE CHANGELOG.md CONTRIBUTING.md CITATION.cff LICENSE-TODO.md
+recursive-include src/geofarmai/resources *.qml
+recursive-include configs *.yaml
+recursive-include examples *.md *.py *.csv
+recursive-include docs *.md
