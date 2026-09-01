@@ -1,0 +1,81 @@
+project:
+  name: sacaton_field
+  crs_in: EPSG:4326
+  auto_reproject_to_utm: true
+
+  soil:
+    path: data/soil.csv
+    x: Longitude
+    y: Latitude
+    id_column: null        # optional; can omit
+    variables: [Slope, Curve, EC_DP, Red, IR, Moisture, Soil_Temp_C]
+    required_variables: [Slope, Moisture, EC_DP]
+
+  yield:
+    path: data/yield.csv
+    x: Longitude
+    y: Latitude
+    id_column: null        # optional; can omit
+    column: Yld_Mass_Dry_lb_ac
+  yield_column: yield
+
+grid:
+  # cell_size_m: null          # leave null to auto-pick from density (recommended)
+  min_cell_size_m: 3           # don’t go below GPS/noise floor (adjust to your device)
+  max_cell_size_m: 30          # cap if points are sparse
+  target_points_per_cell: 1.2  # heuristics for density-driven grid
+  method: idw                  # idw | kriging | nearest | buffer_mean
+  buffer_m: 15                 # used if method==buffer_mean
+  kriging_variogram: spherical # if you choose kriging
+  kriging_nlags: 12
+
+weights:
+  k: 8  # KNN neighbors for libpysal
+
+spatial_pca:
+  engine: multispaeti
+  use_r_multispati: true
+  n_components: 3
+
+clustering:
+  algorithms: [kmeans, agglomerative, gmm, fcm]
+  k_values: [2,3,4,5,6]
+  seeds: [42, 1337]
+
+raster:
+  enabled: true
+  cache: true
+  target_crs: auto_utm
+  cell_size: null
+  buffer: 0.0
+  ref_index: 0
+  silhouette_sample_size: 20000
+  parallel_gridsearch: false
+  n_jobs: 1
+  use_pca: true
+  pca_variables: [Slope, Curve, EC_DP, Red, IR, Moisture, Soil_Temp_C]
+  kriging:
+    variogram_model: spherical
+    nlags: 12
+    weight: false
+    n_closest_points: 24
+
+postprocess:
+  min_area_m2: 5000
+
+export:
+  basemap: web  # web | none
+  out_dir: outputs
+
+experiments:
+  - name: feature_representation_comparison
+    overrides:
+      clustering:
+        algorithms: [kmeans, agglomerative, gmm, fcm]
+        k_values: [2,3,4,5,6]
+        seeds: [42, 1337]
+    parameters:
+      raster.pca_variables:
+        - [EC_DP, Red, IR, Moisture, Soil_Temp_C]
+        - [Slope, Curve, EC_DP, Red, IR, Moisture, Soil_Temp_C]
+      raster.use_pca: [true, false]
