@@ -19,6 +19,7 @@ from typing import Any, Dict, Iterable, List, Tuple
 import pandas as pd
 
 from core.logging_utils import run_log_context
+from geofarmai.provenance import decomposition_metric_fields, vector_decomposition_provenance
 from jobs.flow_mzd import (
     load_cfg,
     ingest_two,
@@ -120,6 +121,8 @@ def run_pipeline(cfg: Dict[str, Any], experiment: str | None, metadata: Dict[str
             "artifact": result.get("artifact"),
             "cell_m": result.get("cell_m"),
         }
+        if result.get("decomposition"):
+            metrics.update(decomposition_metric_fields(result["decomposition"]))
         if leaderboard:
             best = max(leaderboard, key=lambda row: (row.get("vr", 0.0), row.get("asc", 0.0)))
             metrics.update(best)
@@ -147,6 +150,8 @@ def run_pipeline(cfg: Dict[str, Any], experiment: str | None, metadata: Dict[str
 
     labels = best_payload['labels']
     metrics = best_payload['metrics'].copy()
+    decomposition = vector_decomposition_provenance(cfg, used_r)
+    metrics.update(decomposition_metric_fields(decomposition))
     metrics['used_r_multispati'] = used_r
     metrics['experiment'] = experiment or 'baseline'
     for key, value in metadata.items():

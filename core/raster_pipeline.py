@@ -31,6 +31,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from core.cluster import run_agglomerative, run_fcm, run_gmm, run_kmeans
 from core.evaluate import anova_p, variance_reduction
+from geofarmai.provenance import decomposition_metric_fields, raster_decomposition_provenance
 from services.project_visuals import write_visual_manifest
 from services.workspace_manifest import refresh_workspace_manifest
 
@@ -63,7 +64,7 @@ def build_run_fingerprint(
     soil_cfg = project["soil"]
     yield_cfg = project["yield"]
     payload = {
-        "version": 4,
+        "version": 5,
         "experiment": experiment,
         "metadata": metadata or {},
         "target_crs": target_crs,
@@ -242,6 +243,7 @@ def run_raster_mzd_flow(
         cfg,
         pca_variables,
     )
+    decomposition = raster_decomposition_provenance(cfg, used_multispaeti)
     representation = "pca" if raster_cfg.get("use_pca", True) else "raw"
     feature_dir = run_dir / ("pca" if representation == "pca" else "raw_features")
     feature_paths = write_component_rasters(scores, valid_mask, arrays.shape[:2], profile, feature_dir, preview_dir, score_names)
@@ -272,6 +274,7 @@ def run_raster_mzd_flow(
         "pipeline": "raster",
         "feature_representation": representation,
         "used_multispaeti": used_multispaeti,
+        **decomposition_metric_fields(decomposition),
         "pca_variables": ",".join(pca_variables),
     }
     for key, value in (metadata or {}).items():
@@ -296,6 +299,7 @@ def run_raster_mzd_flow(
         "cell_m": None,
         "used_r_multispati": False,
         "used_multispaeti": used_multispaeti,
+        "decomposition": decomposition,
         "leaderboard": leaderboard,
         "rasters": {
             "soil": soil_rasters,

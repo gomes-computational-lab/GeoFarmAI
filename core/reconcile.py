@@ -2,6 +2,7 @@ import numpy as np
 import geopandas as gpd
 from sklearn.neighbors import KDTree
 
+
 def idw(points: gpd.GeoDataFrame, values: np.ndarray, targets: gpd.GeoDataFrame, k=8, power=2.0):
     # points/targets in meters CRS; values is 1D array
     tree = KDTree(np.c_[points.geometry.x, points.geometry.y])
@@ -18,8 +19,35 @@ def idw(points: gpd.GeoDataFrame, values: np.ndarray, targets: gpd.GeoDataFrame,
     est = (values[idx] * w).sum(axis=1)
     return est
 
+
+def _buffer_mean(points: gpd.GeoDataFrame, value_column: str,
+                 targets: gpd.GeoDataFrame, buffer_m: float):
+    buffers = targets[["geometry"]].copy()
+    buffers["geometry"] = buffers.geometry.buffer(buffer_m)
+    joined = gpd.sjoin(
+        points[[value_column, "geometry"]],
+        buffers,
+        how="inner",
+        predicate="within",
+    )
+    return joined.groupby("index_right")[value_column].mean().reindex(targets.index)
+
+
 def populate_grid(soil_utm: gpd.GeoDataFrame, yield_utm: gpd.GeoDataFrame, grid: gpd.GeoDataFrame,
                   soil_vars: list[str], method="idw", buffer_m=15):
+    supported_methods = {"idw", "nearest", "buffer_mean"}
+    if method not in supported_methods:
+        if method == "kriging":
+            raise ValueError(
+                "Vector reconciliation method 'kriging' is not supported. "
+                "Enable the raster workflow to use PyKrige ordinary kriging, "
+                "or choose one of: idw, nearest, buffer_mean."
+            )
+        raise ValueError(
+            f"Unsupported vector reconciliation method '{method}'. "
+            "Choose one of: idw, nearest, buffer_mean."
+        )
+
     out = grid.copy()
     # soil variables
     for v in soil_vars:
@@ -27,10 +55,7 @@ def populate_grid(soil_utm: gpd.GeoDataFrame, yield_utm: gpd.GeoDataFrame, grid:
             joined = gpd.sjoin_nearest(out, soil_utm[[v, "geometry"]], how="left", distance_col=f"{v}_dist")
             out[v] = joined[v].values
         elif method == "buffer_mean":
-            buff = out.copy()
-            buff["geometry"] = buff.geometry.buffer(buffer_m)
-            joined = gpd.sjoin(soil_utm[[v, "geometry"]], buff, how="right", predicate="within")
-            out[v] = joined.groupby("index_right")[v].mean()
+            out[v] = _buffer_mean(soil_utm, v, out, buffer_m)
         else:  # IDW default
             out[v] = idw(soil_utm, soil_utm[v].values, out)
     # yield
@@ -39,10 +64,7 @@ def populate_grid(soil_utm: gpd.GeoDataFrame, yield_utm: gpd.GeoDataFrame, grid:
             joined = gpd.sjoin_nearest(out, yield_utm[["yield","geometry"]], how="left", distance_col="yield_dist")
             out["yield"] = joined["yield"].values
         elif method == "buffer_mean":
-            buff = out.copy()
-            buff["geometry"] = buff.geometry.buffer(buffer_m)
-            joined = gpd.sjoin(yield_utm[["yield","geometry"]], buff, how="right", predicate="within")
-            out["yield"] = joined.groupby("index_right")["yield"].mean()
+            out["yield"] = _buffer_mean(yield_utm, "yield", out, buffer_m)
         else:
             out["yield"] = idw(yield_utm, yield_utm["yield"].values, out)
     return out
