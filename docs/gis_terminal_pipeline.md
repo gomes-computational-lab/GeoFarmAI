@@ -133,6 +133,14 @@ python scripts/run_gis_pipeline.py \
 
 ## What The Pipeline Does
 
+R-backed MULTISPATI is optional. Install the `r` package extra and separately
+provide a compatible R installation with `ade4`, `spdep`, and `adespatial`
+before setting `spatial_pca.use_r_multispati: true`. An explicit R request
+fails clearly when that runtime is unavailable; it does not fall back to PCA.
+Decomposition provenance records requested and actual methods, R usage, and
+fallback status. The Python MULTISPATI raster pathway may fall back to PCA and
+records that fallback.
+
 The terminal pipeline:
 
 1. Reads the soil and yield CSV files.
@@ -145,6 +153,11 @@ The terminal pipeline:
 8. Scores each candidate using yield variance reduction, average silhouette
    coefficient, Calinski-Harabasz score, and ANOVA p-value.
 9. Exports maps, rasters, preview images, tables, logs, and manifests.
+
+The legacy vector/grid-cell workflow supports `idw`, `nearest`, and
+`buffer_mean` reconciliation. It does not implement vector kriging. Setting
+`grid.method: kriging` fails with a configuration error instead of silently
+running IDW. Use the raster workflow for PyKrige ordinary kriging.
 
 ## Main Outputs
 

@@ -18,6 +18,33 @@ Ag-GPT is a local workflow for creating agronomic management zones from soil and
 
 ## Environment setup
 
+Install the base scientific package without R support:
+
+```bash
+python -m pip install -e .
+```
+
+R-backed MULTISPATI is optional and must be requested explicitly:
+
+```bash
+python -m pip install -e ".[r]"
+```
+
+The `r` extra installs the Python bridge only. A compatible R installation
+and the R packages `ade4`, `spdep`, and `adespatial` must also be installed
+and discoverable through a consistent `R_HOME`. If R MULTISPATI is explicitly
+requested but cannot initialize or execute, GeoFarmAI raises an error and
+does not silently substitute PCA.
+
+The raster Python-MULTISPATI pathway may fall back to PCA when its engine is
+unavailable. Results and metrics record the requested method, actual method,
+whether R was used, and whether fallback occurred.
+
+Structured results use a `decomposition` record with `requested_method`,
+`actual_method`, `used_r`, and `fallback_occurred`. Metrics CSVs contain the
+corresponding `requested_decomposition_method`, `actual_decomposition_method`,
+`used_r`, and `decomposition_fallback_occurred` columns.
+
 The recommended setup is Conda because the project uses geospatial libraries and optional R integration for MULTISPATI.
 
 ```bash
@@ -40,7 +67,7 @@ The environment uses Python 3.11 and includes the main geospatial, modeling, orc
 - Raster/modeling: `pykrige`, `multispaeti`, `tifffile`, `scikit-learn`, `scikit-fuzzy`
 - Workflow/API/UI: `prefect`, `fastapi`, `uvicorn`, `streamlit`
 - Agent/LLM: `langchain`, `langchain-community`, `tabulate`
-- R integration: `r-base`, `r-ade4`, `r-spdep`, `rpy2`
+- Optional R integration: `r-base`, `r-ade4`, `r-spdep`, `r-adespatial`, `rpy2`
 
 The Streamlit app is not listed in the current `environment.yml`. If needed, install it after activating the environment:
 
@@ -170,6 +197,9 @@ Expected outputs include:
 - `outputs/logs/baseline_*.log` - Terminal output captured during the baseline run.
 
 To use the previous vector/grid-cell pipeline instead, set `raster.enabled: false` in `configs/project.yaml`.
+That workflow supports `idw`, `nearest`, and `buffer_mean` reconciliation.
+Vector `kriging` is not implemented and is rejected explicitly; ordinary
+kriging is available only through the raster workflow.
 
 The default baseline uses:
 

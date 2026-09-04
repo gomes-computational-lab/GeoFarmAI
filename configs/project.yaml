@@ -24,9 +24,11 @@ grid:
   min_cell_size_m: 3           # don’t go below GPS/noise floor (adjust to your device)
   max_cell_size_m: 30          # cap if points are sparse
   target_points_per_cell: 1.2  # heuristics for density-driven grid
-  method: idw                  # idw | kriging | nearest | buffer_mean
+  method: idw                  # vector workflow: idw | nearest | buffer_mean
   buffer_m: 15                 # used if method==buffer_mean
-  kriging_variogram: spherical # if you choose kriging
+  # Vector kriging is not supported. These legacy keys are retained for
+  # compatibility but are not consumed by the vector workflow.
+  kriging_variogram: spherical
   kriging_nlags: 12
 
 weights:
@@ -34,7 +36,7 @@ weights:
 
 spatial_pca:
   engine: multispaeti
-  use_r_multispati: true
+  use_r_multispati: false  # opt in only after installing the `r` extra and R packages
   n_components: 3
 
 clustering:

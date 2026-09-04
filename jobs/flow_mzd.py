@@ -9,6 +9,7 @@ from core.multispati import multispati_components
 from core.cluster import run_agglomerative, run_fcm, run_gmm, run_kmeans
 from core.evaluate import variance_reduction, anova_p
 from core.export import zones_from_points, save_package, export_pdf_report
+from geofarmai.provenance import decomposition_metric_fields, vector_decomposition_provenance
 from typing import Optional, Tuple, List
 
 @task
@@ -265,7 +266,13 @@ def _run_mzd_flow(cfg, force: bool = False):
     Z, W, used_r = components_from_grid(table, cfg)
     best_payload, leaderboard = gridsearch(table, Z, cfg)  # same gridsearch, but pass 'table' (has yield) for VR/ANOVA
     labels = best_payload['labels']
-    metrics = {**best_payload['metrics'], "used_r_multispati": used_r, "experiment": "baseline"}
+    decomposition = vector_decomposition_provenance(cfg, used_r)
+    metrics = {
+        **best_payload['metrics'],
+        **decomposition_metric_fields(decomposition),
+        "used_r_multispati": used_r,
+        "experiment": "baseline",
+    }
     leaderboard_aug = [dict(entry, experiment="baseline") for entry in leaderboard]
     artifacts = postprocess_and_export(table, labels, metrics, leaderboard_aug, cfg)
     return {
@@ -275,6 +282,7 @@ def _run_mzd_flow(cfg, force: bool = False):
         "gridsearch_csv": artifacts.get("gridsearch_csv"),
         "cell_m": cell,
         "used_r_multispati": used_r,
+        "decomposition": decomposition,
         "leaderboard": leaderboard_aug,
     }
 
