@@ -27,6 +27,28 @@ def zones_from_points(gdf: gpd.GeoDataFrame, labels, min_area=5000):
     return cleaned.reset_index(drop=True)
 
 
+def zones_from_support(gdf: gpd.GeoDataFrame, labels, min_area=5000):
+    """Create zones from point samples or an existing polygon analysis support.
+
+    Point behavior delegates unchanged to :func:`zones_from_points`. Polygon
+    supports are already spatial cells, so they are dissolved directly instead
+    of being buffered as though they were samples.
+    """
+
+    if (gdf.geometry.geom_type == "Point").all():
+        return zones_from_points(gdf, labels, min_area=min_area)
+    if not gdf.geometry.geom_type.isin(["Polygon", "MultiPolygon"]).all():
+        raise ValueError("Zone export supports point, Polygon, or MultiPolygon geometry.")
+
+    table = gdf.copy()
+    table["zone"] = labels
+    polygons = table.dissolve(by="zone")
+    cleaned = polygons[polygons.area >= min_area]
+    cleaned = gpd.GeoDataFrame(cleaned, geometry="geometry", crs=gdf.crs)
+    cleaned["zone_id"] = cleaned.index
+    return cleaned.reset_index(drop=True)
+
+
 def _maybe_add_basemap(ax, layer: gpd.GeoDataFrame, basemap_mode: str):
     if basemap_mode != "web":
         return

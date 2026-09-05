@@ -5,9 +5,74 @@ import sys
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 
-from geofarmai.exceptions import RMultispatiUnavailableError
+from geofarmai.exceptions import MultispatiUnavailableError, RMultispatiUnavailableError
 
 R_AVAILABLE = None
+
+
+def standardized_predictors(X: pd.DataFrame):
+    """Return the existing standardized, unreduced predictor representation."""
+
+    scaler = StandardScaler()
+    values = scaler.fit_transform(X)
+    return pd.DataFrame(values, index=X.index, columns=X.columns), scaler
+
+
+def pca_components(X: pd.DataFrame, n_components=3):
+    """Run the existing standardized PCA pathway and retain fitted metadata."""
+
+    standardized, scaler = standardized_predictors(X)
+    pca = PCA(n_components=n_components)
+    Z = pca.fit_transform(standardized.to_numpy())
+    scores = pd.DataFrame(
+        Z,
+        index=X.index,
+        columns=[f"PC{i+1}" for i in range(Z.shape[1])],
+    )
+    return scores, pca, scaler
+
+
+def python_multispati_components(
+    X: pd.DataFrame,
+    connectivity,
+    n_components=3,
+    random_state=42,
+):
+    """Run the established ``multispaeti.MultispatiPCA`` implementation.
+
+    Importing the optional scientific implementation is deliberately lazy so
+    importing GeoFarmAI never initializes an unavailable decomposition engine.
+    An explicit request never falls back to ordinary PCA.
+    """
+
+    try:
+        from multispaeti import MultispatiPCA
+    except Exception as exc:
+        raise MultispatiUnavailableError(
+            "Python MULTISPATI was explicitly requested, but the 'multispaeti' "
+            "package is unavailable or could not be initialized. Install the "
+            "GeoFarmAI base scientific dependencies and retry."
+        ) from exc
+
+    standardized, scaler = standardized_predictors(X)
+    model = MultispatiPCA(
+        n_components=n_components,
+        connectivity=connectivity,
+        random_state=random_state,
+    )
+    try:
+        Z = model.fit_transform(standardized.to_numpy())
+    except Exception as exc:
+        raise MultispatiUnavailableError(
+            "Python MULTISPATI was explicitly requested but execution failed. "
+            "Check the multispaeti installation and spatial connectivity settings."
+        ) from exc
+    scores = pd.DataFrame(
+        Z,
+        index=X.index,
+        columns=[f"SPC{i+1}" for i in range(Z.shape[1])],
+    )
+    return scores, model, scaler
 
 
 def _preflight_r_multispati():
@@ -42,8 +107,8 @@ def _preflight_r_multispati():
 def multispati_components(X: pd.DataFrame, W, n_components=3, use_r=True):
     global R_AVAILABLE
     if not use_r:
-        Z = PCA(n_components=n_components).fit_transform(StandardScaler().fit_transform(X))
-        return pd.DataFrame(Z, columns=[f"PC{i+1}" for i in range(Z.shape[1])]), False
+        scores, _, _ = pca_components(X, n_components=n_components)
+        return scores.reset_index(drop=True), False
 
     _preflight_r_multispati()
     try:
