@@ -11,6 +11,21 @@ from geofarmai.model import GeoFarmModel
 from geofarmai.result import GeoFarmResult
 
 
+def delineate_zones(
+    data: FieldDataset | HarmonizedFieldDataset,
+    **model_options: Any,
+) -> GeoFarmResult:
+    """Delineate zones through the canonical :class:`GeoFarmModel` API.
+
+    ``model_options`` are forwarded unchanged to ``GeoFarmModel``. Input roles,
+    coordinates, and CRS must already be explicit in a ``FieldDataset`` (or in
+    an already harmonized canonical dataset); this function performs no schema
+    inference and implements no scientific workflow of its own.
+    """
+
+    return GeoFarmModel(**model_options).fit(data)
+
+
 def run_pipeline(
     data_or_config: FieldDataset | HarmonizedFieldDataset | Mapping[str, Any],
     experiment: str | None = None,
@@ -51,4 +66,4 @@ def run_pipeline(
     return GeoFarmModel(**model_options).fit(data_or_config)
 
 
-__all__ = ["run_pipeline"]
+__all__ = ["delineate_zones", "run_pipeline"]

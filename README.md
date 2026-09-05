@@ -52,6 +52,50 @@ is declared selected. Outcome columns never enter the predictor matrix.
 `run_pipeline(...)` remains available as a deprecated compatibility wrapper.
 New code should use `GeoFarmModel.fit(...)`.
 
+### Convenience API
+
+`delineate_zones()` is a thin shortcut for `GeoFarmModel(...).fit(data)`. It
+accepts a role-explicit `FieldDataset` or `HarmonizedFieldDataset` and forwards
+model options unchanged.
+
+Predictors only, selected by silhouette:
+
+```python
+from geofarmai import delineate_zones
+
+result = delineate_zones(
+    predictor_data,
+    decomposition="pca",
+    clustering=["kmeans", "gmm"],
+    k=range(2, 6),
+    selection="silhouette",
+)
+```
+
+Yield explicitly selected for variance-reduction validation:
+
+```python
+result = delineate_zones(
+    data,
+    decomposition="pca",
+    clustering=["kmeans", "gmm"],
+    k=range(2, 6),
+    selection="variance_reduction",
+    selection_outcome="yield",
+)
+```
+
+Retain all candidates without automatically selecting one:
+
+```python
+result = delineate_zones(
+    data,
+    clustering="kmeans",
+    k=range(2, 6),
+    selection=None,
+)
+```
+
 ## Repository layout
 
 - `configs/project.yaml` - Main project configuration. Defines input data paths, coordinate columns, soil/yield variables, grid settings, clustering settings, experiment sweeps, and output directory.
