@@ -39,3 +39,17 @@ def test_anova_matches_scipy_one_way_result():
     expected = f_oneway(outcome[:3], outcome[3:6], outcome[6:]).pvalue
 
     assert anova_p(outcome, labels) == pytest.approx(expected, rel=1e-10, abs=1e-15)
+
+
+def test_generic_external_metrics_are_identical_for_yield_and_nitrate_names():
+    labels = np.repeat([0, 1, 2], 3)
+    values = [1.0, 1.5, 2.0, 8.0, 8.5, 9.0, 15.0, 15.5, 16.0]
+    yield_values = pd.Series(values, name="yield")
+    nitrate_values = pd.Series(values, name="nitrate")
+
+    assert variance_reduction(yield_values, labels) == pytest.approx(
+        variance_reduction(nitrate_values, labels), rel=1e-14
+    )
+    assert anova_p(yield_values, labels) == pytest.approx(
+        anova_p(nitrate_values, labels), rel=1e-14
+    )

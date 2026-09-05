@@ -22,7 +22,7 @@ from core.logging_utils import run_log_context
 from geofarmai.provenance import decomposition_metric_fields, vector_decomposition_provenance
 from jobs.flow_mzd import (
     load_cfg,
-    ingest_two,
+    ingest_sources,
     reproject_to_meters,
     make_density_grid,
     reconcile_to_grid,
@@ -130,23 +130,23 @@ def run_pipeline(cfg: Dict[str, Any], experiment: str | None, metadata: Dict[str
             metrics[f"param__{key}"] = _stringify(value)
         return metrics, leaderboard
 
-    print(f"[experiments] {label}: loading soil and yield data")
-    soil, yld = ingest_two.fn(cfg)
+    print(f"[experiments] {label}: loading predictor and optional outcome data")
+    soil, outcome_points, outcome_name = ingest_sources.fn(cfg)
 
     print(f"[experiments] {label}: reprojecting inputs")
-    soil, yld = reproject_to_meters.fn(soil, yld, cfg)
+    soil, outcome_points = reproject_to_meters.fn(soil, outcome_points, cfg)
 
     print(f"[experiments] {label}: building adaptive grid")
-    grid, cell = make_density_grid.fn(soil, yld, cfg)
+    grid, cell = make_density_grid.fn(soil, outcome_points, cfg)
 
-    print(f"[experiments] {label}: reconciling soil/yield values to {len(grid)} grid cells")
-    table = reconcile_to_grid.fn(soil, yld, grid, cfg)
+    print(f"[experiments] {label}: reconciling analysis values to {len(grid)} grid cells")
+    table = reconcile_to_grid.fn(soil, outcome_points, grid, cfg, outcome_name)
 
     print(f"[experiments] {label}: computing spatial components")
     Z, W, used_r = components_from_grid.fn(table, cfg)
 
     print(f"[experiments] {label}: clustering and scoring candidate zones")
-    best_payload, leaderboard = gridsearch.fn(table, Z, cfg)
+    best_payload, leaderboard = gridsearch.fn(table, Z, cfg, outcome_name)
 
     labels = best_payload['labels']
     metrics = best_payload['metrics'].copy()
@@ -167,6 +167,7 @@ def run_pipeline(cfg: Dict[str, Any], experiment: str | None, metadata: Dict[str
         augmented_leaderboard,
         cfg,
         experiment=metrics['experiment'],
+        outcome_name=outcome_name,
     )
 
     return {

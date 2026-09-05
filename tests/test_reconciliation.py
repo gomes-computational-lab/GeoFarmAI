@@ -6,7 +6,7 @@ import pytest
 gpd = pytest.importorskip("geopandas")
 from shapely.geometry import Point, box
 
-from core.reconcile import idw, populate_grid
+from core.reconcile import idw, populate_analysis_grid, populate_grid
 
 
 def test_idw_reproduces_samples_at_their_locations_and_interpolates_midpoint():
@@ -71,6 +71,37 @@ def test_populate_grid_nearest_neighbor_reconciliation():
 
     np.testing.assert_allclose(reconciled["feature"], [0.0, 10.0])
     np.testing.assert_allclose(reconciled["yield"], [100.0, 200.0])
+
+
+def test_generic_reconciliation_accepts_nitrate_as_optional_outcome():
+    predictors = gpd.GeoDataFrame(
+        {"feature": [0.0, 10.0]},
+        geometry=[Point(0.0, 5.0), Point(20.0, 5.0)],
+        crs="EPSG:32612",
+    )
+    outcomes = gpd.GeoDataFrame(
+        {"nitrate": [2.0, 8.0]},
+        geometry=[Point(0.0, 5.0), Point(20.0, 5.0)],
+        crs=predictors.crs,
+    )
+    grid = gpd.GeoDataFrame(
+        {"cell_id": [0, 1]},
+        geometry=[box(0.0, 0.0, 10.0, 10.0), box(10.0, 0.0, 20.0, 10.0)],
+        crs=predictors.crs,
+    )
+
+    reconciled = populate_analysis_grid(
+        predictors,
+        grid,
+        ["feature"],
+        outcome_points=outcomes,
+        outcome_name="nitrate",
+    )
+
+    np.testing.assert_allclose(
+        reconciled["nitrate"], idw(outcomes, outcomes["nitrate"].to_numpy(), grid)
+    )
+    assert list(reconciled.columns).count("nitrate") == 1
 
 
 def test_populate_grid_buffer_mean_handles_zero_one_multiple_and_duplicate_neighbors():

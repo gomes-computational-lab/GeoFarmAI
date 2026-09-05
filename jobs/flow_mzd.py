@@ -9,6 +9,7 @@ from core.multispati import multispati_components
 from core.cluster import run_agglomerative, run_fcm, run_gmm, run_kmeans
 from core.evaluate import variance_reduction, anova_p
 from core.export import zones_from_points, save_package, export_pdf_report
+from geofarmai.outcome import resolve_pipeline_outcome
 from geofarmai.provenance import decomposition_metric_fields, vector_decomposition_provenance
 from typing import Optional, Tuple, List
 
@@ -59,68 +60,113 @@ def _ingest_one(path: str, xcol: str, ycol: str, crs_in: str,
     return gdf
 
 @task
-def ingest_two(cfg) -> Tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+def ingest_sources(
+    cfg,
+) -> Tuple[gpd.GeoDataFrame, Optional[gpd.GeoDataFrame], Optional[str]]:
+    """Ingest predictors and an optional explicitly configured outcome."""
+
     pj = cfg["project"]
     crs_in = pj.get("crs_in", "EPSG:4326")
+    outcome = resolve_pipeline_outcome(pj)
 
-    # Soil config
     sj = pj["soil"]
-    soil_keep = sj.get("variables", None)  # list of soil predictors to keep
+    soil_keep = list(sj.get("variables", []))
+    if outcome is not None:
+        conflicting_name = outcome.name in soil_keep or (
+            outcome.uses_predictor_source and outcome.source_column in soil_keep
+        )
+        if conflicting_name:
+            raise ValueError(
+                f"Configured outcome {outcome.name!r} conflicts with a predictor name in "
+                "the legacy flat-table pipeline. Use a distinct outcome name."
+            )
+    if outcome is not None and outcome.uses_predictor_source:
+        soil_keep.append(outcome.source_column)
     soil = _ingest_one(
         path=sj["path"],
         xcol=sj["x"],
         ycol=sj["y"],
         crs_in=crs_in,
         idcol=sj.get("id_column"),
-        keep_cols=soil_keep
+        keep_cols=soil_keep or None,
     )
 
-    # Yield config
-    yj = pj["yield"]
-    yield_keep = [yj["column"]] if "column" in yj else None
-    yld = _ingest_one(
-        path=yj["path"],
-        xcol=yj["x"],
-        ycol=yj["y"],
+    if outcome is None:
+        return soil, None, None
+
+    if outcome.uses_predictor_source:
+        if outcome.source_column != outcome.name:
+            soil.rename(columns={outcome.source_column: outcome.name}, inplace=True)
+        return soil, None, outcome.name
+
+    outcome_cfg = outcome.source_config
+    outcome_points = _ingest_one(
+        path=outcome_cfg["path"],
+        xcol=outcome_cfg["x"],
+        ycol=outcome_cfg["y"],
         crs_in=crs_in,
-        idcol=yj.get("id_column"),
-        keep_cols=yield_keep
+        idcol=outcome_cfg.get("id_column"),
+        keep_cols=[outcome.source_column],
     )
+    if outcome.source_column != outcome.name:
+        outcome_points.rename(columns={outcome.source_column: outcome.name}, inplace=True)
+    return soil, outcome_points, outcome.name
 
-    # Standardize yield column name to 'yield' for downstream code
-    if "column" in yj and yj["column"] != "yield":
-        yld.rename(columns={yj["column"]: "yield"}, inplace=True)
-
-    return soil, yld
 
 @task
-def reproject_to_meters(soil, yld, cfg):
+def ingest_two(cfg) -> Tuple[gpd.GeoDataFrame, Optional[gpd.GeoDataFrame]]:
+    """Compatibility wrapper for the historical two-source task."""
+
+    predictors, outcome, _ = ingest_sources.fn(cfg)
+    return predictors, outcome
+
+@task
+def reproject_to_meters(predictors, outcome_points, cfg):
     if cfg["project"].get("auto_reproject_to_utm", True):
         from core.crs import to_utm_auto
-        soil, epsg = to_utm_auto(soil)
-        yld  = yld.to_crs(epsg)
-    return soil, yld
+        predictors, epsg = to_utm_auto(predictors)
+        if outcome_points is not None:
+            outcome_points = outcome_points.to_crs(epsg)
+    return predictors, outcome_points
 
 @task
-def make_density_grid(soil, yld, cfg):
-    from core.grid import choose_cell_size, build_field_grid
+def make_density_grid(predictors, outcome_points, cfg):
+    from core.grid import build_analysis_grid, choose_cell_size
     cell = cfg["grid"].get("cell_size_m")
     if not cell:
-        union = soil[[]].copy(); union["geometry"] = soil.geometry
-        union = pd.concat([yld[["geometry"]]], ignore_index=True)  # pandas >= 2.1: use pd.concat
-        union = pd.concat([soil[["geometry"]], yld[["geometry"]]], ignore_index=True)
-        union = gpd.GeoDataFrame(union, geometry="geometry", crs=soil.crs)
+        supports = [predictors[["geometry"]]]
+        if outcome_points is not None:
+            supports.append(outcome_points[["geometry"]])
+        union = pd.concat(supports, ignore_index=True)
+        union = gpd.GeoDataFrame(union, geometry="geometry", crs=predictors.crs)
         cell = choose_cell_size(union, cfg["grid"]["min_cell_size_m"], cfg["grid"]["max_cell_size_m"])
-    grid = build_field_grid(soil, yld, cell)
+    grid = build_analysis_grid(predictors, cell, outcome_points=outcome_points)
     return grid, cell
 
 @task
-def reconcile_to_grid(soil, yld, grid, cfg):
-    from core.reconcile import populate_grid
+def reconcile_to_grid(
+    predictors,
+    outcome_points,
+    grid,
+    cfg,
+    outcome_name: Optional[str] = None,
+):
+    from core.reconcile import populate_analysis_grid
     soil_vars = cfg["project"]["soil"]["variables"]
+    if outcome_name is None:
+        outcome = resolve_pipeline_outcome(cfg["project"])
+        outcome_name = outcome.name if outcome is not None else None
     method = cfg["grid"].get("method", "idw")
     buffer_m = cfg["grid"].get("buffer_m", 15)
-    table = populate_grid(soil, yld, grid, soil_vars, method=method, buffer_m=buffer_m)
+    table = populate_analysis_grid(
+        predictors,
+        grid,
+        soil_vars,
+        outcome_points=outcome_points,
+        outcome_name=outcome_name,
+        method=method,
+        buffer_m=buffer_m,
+    )
     return table
 
 @task
@@ -169,13 +215,16 @@ def compute_components(gdf, W, cfg):
     return Z, used_r
 
 @task
-def gridsearch(gdf, Z, cfg):
+def gridsearch(gdf, Z, cfg, outcome_name: Optional[str] = None):
     seeds = cfg['clustering'].get('seeds', [42])
     best = None
     best_payload = None
     leaderboard = []
     X = Z.values
-    yield_col = cfg['project'].get('yield_column', 'yield')
+    if outcome_name is None:
+        outcome = resolve_pipeline_outcome(cfg['project'])
+        outcome_name = outcome.name if outcome is not None else None
+    has_outcome = outcome_name is not None and outcome_name in gdf.columns
     for k in cfg['clustering']['k_values']:
         for algo in cfg['clustering']['algorithms']:
             seed_values = seeds if algo in {'gmm', 'fcm', 'kmeans'} else [None]
@@ -191,19 +240,31 @@ def gridsearch(gdf, Z, cfg):
                 else:
                     raise ValueError(f"Unknown clustering algorithm: {algo}")
                 metrics = {'k': k, 'algo': algo, 'seed': seed, **m}
-                if yield_col in gdf.columns:
-                    vr = variance_reduction(gdf[yield_col], labels)
-                    p = anova_p(gdf[yield_col], labels)
-                    metrics.update({'vr': vr, 'anova_p': p})
+                if has_outcome:
+                    vr = variance_reduction(gdf[outcome_name], labels)
+                    p = anova_p(gdf[outcome_name], labels)
+                    metrics.update({'vr': vr, 'anova_p': p, 'outcome_name': outcome_name})
                 leaderboard.append(metrics.copy())
-                score = (metrics.get('vr', 0.0), metrics.get('asc', 0.0))
+                score = (
+                    (metrics['vr'], metrics.get('asc', 0.0))
+                    if has_outcome
+                    else (metrics.get('asc', 0.0),)
+                )
                 if best is None or score > best:
                     best = score
                     best_payload = {'labels': labels, 'metrics': metrics.copy()}
     return best_payload, leaderboard
 
 @task
-def postprocess_and_export(gdf, labels, metrics, leaderboard, cfg, experiment: str | None = None):
+def postprocess_and_export(
+    gdf,
+    labels,
+    metrics,
+    leaderboard,
+    cfg,
+    experiment: str | None = None,
+    outcome_name: Optional[str] = None,
+):
     zones = zones_from_points(gdf, labels, min_area=cfg['postprocess']['min_area_m2'])
     suffix = f"_{experiment}" if experiment else ""
     base_path = f"{cfg['export']['out_dir']}/{cfg['project']['name']}{suffix}"
@@ -212,8 +273,11 @@ def postprocess_and_export(gdf, labels, metrics, leaderboard, cfg, experiment: s
     save_package(zones, labelled, metrics, out)
 
     feature_columns = list(cfg['project']['soil'].get('variables', []))
-    if 'yield' in labelled.columns:
-        feature_columns.append('yield')
+    if outcome_name is None:
+        outcome = resolve_pipeline_outcome(cfg['project'])
+        outcome_name = outcome.name if outcome is not None else None
+    if outcome_name is not None and outcome_name in labelled.columns:
+        feature_columns.append(outcome_name)
     feature_columns = list(dict.fromkeys(feature_columns))
     pdf_out = f"{base_path}.pdf"
     image_paths = export_pdf_report(
@@ -258,13 +322,21 @@ def _run_mzd_flow(cfg, force: bool = False):
         from core.raster_pipeline import run_raster_mzd_flow
         return run_raster_mzd_flow(cfg, force=force)
 
-    soil, yld = ingest_two(cfg)
-    soil, yld = reproject_to_meters(soil, yld, cfg)
-    grid, cell = make_density_grid(soil, yld, cfg)
-    table = reconcile_to_grid(soil, yld, grid, cfg)
+    configured_outcome = resolve_pipeline_outcome(cfg.get("project", {}))
+    outcome_name = configured_outcome.name if configured_outcome is not None else None
+    soil, outcome_points = ingest_two(cfg)
+    soil, outcome_points = reproject_to_meters(soil, outcome_points, cfg)
+    grid, cell = make_density_grid(soil, outcome_points, cfg)
+    if outcome_name is None:
+        table = reconcile_to_grid(soil, outcome_points, grid, cfg)
+    else:
+        table = reconcile_to_grid(soil, outcome_points, grid, cfg, outcome_name)
     # proceed as before: clustering on Z from table
     Z, W, used_r = components_from_grid(table, cfg)
-    best_payload, leaderboard = gridsearch(table, Z, cfg)  # same gridsearch, but pass 'table' (has yield) for VR/ANOVA
+    if outcome_name is None:
+        best_payload, leaderboard = gridsearch(table, Z, cfg)
+    else:
+        best_payload, leaderboard = gridsearch(table, Z, cfg, outcome_name)
     labels = best_payload['labels']
     decomposition = vector_decomposition_provenance(cfg, used_r)
     metrics = {
@@ -274,7 +346,12 @@ def _run_mzd_flow(cfg, force: bool = False):
         "experiment": "baseline",
     }
     leaderboard_aug = [dict(entry, experiment="baseline") for entry in leaderboard]
-    artifacts = postprocess_and_export(table, labels, metrics, leaderboard_aug, cfg)
+    if outcome_name is None:
+        artifacts = postprocess_and_export(table, labels, metrics, leaderboard_aug, cfg)
+    else:
+        artifacts = postprocess_and_export(
+            table, labels, metrics, leaderboard_aug, cfg, outcome_name=outcome_name
+        )
     return {
         "artifact": artifacts["gpkg"],
         "pdf": artifacts["pdf"],
@@ -284,6 +361,7 @@ def _run_mzd_flow(cfg, force: bool = False):
         "used_r_multispati": used_r,
         "decomposition": decomposition,
         "leaderboard": leaderboard_aug,
+        "outcome_name": outcome_name,
     }
 
 if __name__ == "__main__":

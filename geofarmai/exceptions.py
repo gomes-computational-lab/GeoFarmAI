@@ -21,5 +21,9 @@ class HarmonizationError(GeoFarmAIError, ValueError):
     """Raised when spatial sources cannot be harmonized safely."""
 
 
+class OutcomeConfigurationError(GeoFarmAIError, ValueError):
+    """Raised when an explicit pipeline outcome declaration is invalid."""
+
+
 class RMultispatiUnavailableError(GeoFarmAIError, RuntimeError):
     """Raised when explicitly requested R MULTISPATI support cannot run."""

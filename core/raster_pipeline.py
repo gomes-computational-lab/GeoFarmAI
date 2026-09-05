@@ -7,7 +7,7 @@ import re
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 import geopandas as gpd
 import numpy as np
@@ -31,6 +31,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 from core.cluster import run_agglomerative, run_fcm, run_gmm, run_kmeans
 from core.evaluate import anova_p, variance_reduction
+from geofarmai.outcome import resolve_pipeline_outcome
 from geofarmai.provenance import decomposition_metric_fields, raster_decomposition_provenance
 from services.project_visuals import write_visual_manifest
 from services.workspace_manifest import refresh_workspace_manifest
@@ -62,9 +63,9 @@ def build_run_fingerprint(
 ) -> str:
     project = cfg["project"]
     soil_cfg = project["soil"]
-    yield_cfg = project["yield"]
+    outcome = resolve_pipeline_outcome(project)
     payload = {
-        "version": 5,
+        "version": 6,
         "experiment": experiment,
         "metadata": metadata or {},
         "target_crs": target_crs,
@@ -75,10 +76,11 @@ def build_run_fingerprint(
         "postprocess": cfg.get("postprocess", {}),
         "raster": cfg.get("raster", {}),
         "inputs": {
-            "soil": file_digest(soil_cfg["path"]),
-            "yield": file_digest(yield_cfg["path"]),
+            "predictors": file_digest(soil_cfg["path"]),
         },
     }
+    if outcome is not None and outcome.source_config is not None:
+        payload["inputs"]["outcome"] = file_digest(outcome.source_config["path"])
     blob = json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
     return hashlib.sha256(blob).hexdigest()
 
@@ -159,13 +161,19 @@ def run_raster_mzd_flow(
 
     crs_in = project.get("crs_in", "EPSG:4326")
     soil_cfg = project["soil"]
-    yield_cfg = project["yield"]
+    outcome = resolve_pipeline_outcome(project)
+    if outcome is not None and outcome.uses_predictor_source and (
+        outcome.name in soil_cfg.get("variables", [])
+        or outcome.source_column in soil_cfg.get("variables", [])
+    ):
+        raise ValueError(
+            f"Configured outcome {outcome.name!r} is also listed as a predictor."
+        )
     target_crs = resolve_target_crs(raster_cfg, soil_cfg["path"], soil_cfg["x"], soil_cfg["y"], crs_in)
     print(f"[raster] Using target CRS: {target_crs}")
-    yield_column = yield_cfg.get("column", project.get("yield_column", "yield"))
-    shared_bounds = choose_max_extent_bounds(
+    shared_bounds = choose_analysis_extent_bounds(
         soil_cfg,
-        yield_cfg,
+        outcome.source_config if outcome is not None else None,
         crs_in,
         target_crs,
         buffer=float(raster_cfg.get("buffer", 0.0)),
@@ -194,19 +202,25 @@ def run_raster_mzd_flow(
         bounds=shared_bounds,
     )
 
-    print("[raster] Kriging yield variable")
-    yield_rasters = krige_csv_variables(
-        csv_path=yield_cfg["path"],
-        x_col=yield_cfg["x"],
-        y_col=yield_cfg["y"],
-        variables=[yield_column],
-        crs_in=crs_in,
-        target_crs=target_crs,
-        output_dir=raster_dir / "yield",
-        raster_cfg=raster_cfg,
-        preview_dir=preview_dir,
-        bounds=shared_bounds,
-    )
+    outcome_rasters: Dict[str, Dict[str, Any]] = {}
+    if outcome is not None:
+        print(f"[raster] Kriging outcome variable: {outcome.name}")
+        outcome_cfg = outcome.source_config or soil_cfg
+        output_name = "yield" if outcome.legacy_yield_adapter else "outcome"
+        raw_outcome_rasters = krige_csv_variables(
+            csv_path=outcome_cfg["path"],
+            x_col=outcome_cfg["x"],
+            y_col=outcome_cfg["y"],
+            variables=[outcome.source_column],
+            crs_in=crs_in,
+            target_crs=target_crs,
+            output_dir=raster_dir / output_name,
+            raster_cfg=raster_cfg,
+            preview_dir=preview_dir,
+            bounds=shared_bounds,
+        )
+        if outcome.source_column in raw_outcome_rasters:
+            outcome_rasters[outcome.name] = raw_outcome_rasters[outcome.source_column]
 
     pca_variables = raster_cfg.get("pca_variables") or soil_cfg.get("variables", [])
     required = soil_cfg.get("required_variables", [])
@@ -230,10 +244,10 @@ def run_raster_mzd_flow(
         resampling=Resampling.bilinear,
     )
 
-    yield_array = None
-    yield_path = yield_rasters.get(yield_column, {}).get("tif")
-    if yield_path:
-        yield_array = align_single_raster(yield_path, profile, bounds, Resampling.bilinear)
+    outcome_array = None
+    outcome_path = outcome_rasters.get(outcome.name, {}).get("tif") if outcome else None
+    if outcome_path:
+        outcome_array = align_single_raster(outcome_path, profile, bounds, Resampling.bilinear)
 
     print("[raster] Building clustering feature matrix")
     scores, feature_summary, used_multispaeti, connectivity, score_names = spatial_pca_from_stack(
@@ -252,8 +266,17 @@ def run_raster_mzd_flow(
     feature_stats_path.write_text(feature_summary, encoding="utf-8")
 
     print("[raster] Running clustering grid search")
-    best, leaderboard, selections = raster_gridsearch(scores, yield_array, valid_mask, connectivity, cfg)
-    comparison_paths = write_metric_comparison_plots(leaderboard, preview_dir)
+    best, leaderboard, selections = raster_gridsearch(
+        scores,
+        outcome_array,
+        valid_mask,
+        connectivity,
+        cfg,
+        outcome_name=outcome.name if outcome else None,
+    )
+    comparison_paths = write_metric_comparison_plots(
+        leaderboard, preview_dir, outcome_name=outcome.name if outcome else None
+    )
     cluster_paths = write_cluster_outputs(
         selections,
         leaderboard,
@@ -262,6 +285,7 @@ def run_raster_mzd_flow(
         profile,
         cluster_dir,
         preview_dir,
+        outcome_name=outcome.name if outcome else None,
     )
 
     zones_path = run_dir / f"{project['name']}_zones.gpkg"
@@ -301,14 +325,17 @@ def run_raster_mzd_flow(
         "used_multispaeti": used_multispaeti,
         "decomposition": decomposition,
         "leaderboard": leaderboard,
+        "outcome_name": outcome.name if outcome else None,
         "rasters": {
             "soil": soil_rasters,
-            "yield": yield_rasters,
+            "outcome": outcome_rasters,
             "features": feature_paths,
             "clusters": cluster_paths,
             "comparisons": comparison_paths,
         },
     }
+    if outcome is not None and outcome.legacy_yield_adapter:
+        result["rasters"]["yield"] = outcome_rasters
     write_run_manifest(manifest_path, fingerprint, result)
     refresh_workspace_manifest(cfg)
     return result
@@ -317,6 +344,40 @@ def dataset_extent(csv_path: str, x_col: str, y_col: str, crs_in: str, target_cr
     _, x, y = load_points(csv_path, x_col, y_col, crs_in, target_crs)
     return x.min() - buffer, x.max() + buffer, y.min() - buffer, y.max() + buffer
 
+def choose_analysis_extent_bounds(
+    predictor_cfg: Dict[str, Any],
+    outcome_cfg: Optional[Mapping[str, Any]],
+    crs_in: str,
+    target_crs: str,
+    buffer: float = 0.0,
+) -> Tuple[float, float, float, float]:
+    predictor_bounds = dataset_extent(
+        predictor_cfg["path"], predictor_cfg["x"], predictor_cfg["y"], crs_in, target_crs, buffer
+    )
+    if outcome_cfg is None:
+        return predictor_bounds
+    outcome_bounds = dataset_extent(
+        outcome_cfg["path"], outcome_cfg["x"], outcome_cfg["y"], crs_in, target_crs, buffer
+    )
+    predictor_area = (predictor_bounds[1] - predictor_bounds[0]) * (
+        predictor_bounds[3] - predictor_bounds[2]
+    )
+    outcome_area = (outcome_bounds[1] - outcome_bounds[0]) * (
+        outcome_bounds[3] - outcome_bounds[2]
+    )
+    if outcome_area > predictor_area:
+        print(
+            f"[raster] outcome extent is larger ({outcome_area:,.0f} m^2 vs "
+            f"{predictor_area:,.0f} m^2); using outcome bounds for kriging"
+        )
+        return outcome_bounds
+    print(
+        f"[raster] predictor extent is larger ({predictor_area:,.0f} m^2 vs "
+        f"{outcome_area:,.0f} m^2); using predictor bounds for kriging"
+    )
+    return predictor_bounds
+
+
 def choose_max_extent_bounds(
     soil_cfg: Dict[str, Any],
     yield_cfg: Dict[str, Any],
@@ -324,15 +385,11 @@ def choose_max_extent_bounds(
     target_crs: str,
     buffer: float = 0.0,
 ) -> Tuple[float, float, float, float]:
-    soil_bounds = dataset_extent(soil_cfg["path"], soil_cfg["x"], soil_cfg["y"], crs_in, target_crs, buffer)
-    yield_bounds = dataset_extent(yield_cfg["path"], yield_cfg["x"], yield_cfg["y"], crs_in, target_crs, buffer)
-    soil_area = (soil_bounds[1] - soil_bounds[0]) * (soil_bounds[3] - soil_bounds[2])
-    yield_area = (yield_bounds[1] - yield_bounds[0]) * (yield_bounds[3] - yield_bounds[2])
-    if yield_area > soil_area:
-        print(f"[raster] yield extent is larger ({yield_area:,.0f} m^2 vs {soil_area:,.0f} m^2); using yield bounds for kriging")
-        return yield_bounds
-    print(f"[raster] soil extent is larger ({soil_area:,.0f} m^2 vs {yield_area:,.0f} m^2); using soil bounds for kriging")
-    return soil_bounds
+    """Compatibility wrapper for the historical soil/yield API."""
+
+    return choose_analysis_extent_bounds(
+        soil_cfg, yield_cfg, crs_in, target_crs, buffer
+    )
 
 def krige_csv_variables(
     csv_path: str,
@@ -673,11 +730,11 @@ def write_component_rasters(scores, valid_mask, shape2d, profile, output_dir: Pa
     return paths
 
 
-def _set_gridsearch_context(scores, y_valid, connectivity_sym, sample_size) -> None:
+def _set_gridsearch_context(scores, outcome_values, connectivity_sym, sample_size) -> None:
     global _GRIDSEARCH_CONTEXT
     _GRIDSEARCH_CONTEXT = {
         "scores": scores,
-        "y_valid": y_valid,
+        "outcome_values": outcome_values,
         "connectivity_sym": connectivity_sym,
         "sample_size": sample_size,
     }
@@ -685,7 +742,7 @@ def _set_gridsearch_context(scores, y_valid, connectivity_sym, sample_size) -> N
 
 def _run_gridsearch_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
     scores = _GRIDSEARCH_CONTEXT["scores"]
-    y_valid = _GRIDSEARCH_CONTEXT["y_valid"]
+    outcome_values = _GRIDSEARCH_CONTEXT["outcome_values"]
     connectivity_sym = _GRIDSEARCH_CONTEXT["connectivity_sym"]
     sample_size = _GRIDSEARCH_CONTEXT["sample_size"]
 
@@ -707,9 +764,9 @@ def _run_gridsearch_candidate(candidate: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(f"Unknown clustering algorithm: {algo}")
 
     row = {"k": k, "algo": algo, "seed": seed, **metrics}
-    if y_valid is not None:
-        row["vr"] = variance_reduction(pd.Series(y_valid), labels)
-        row["anova_p"] = anova_p(pd.Series(y_valid), labels)
+    if outcome_values is not None:
+        row["vr"] = variance_reduction(outcome_values, labels)
+        row["anova_p"] = anova_p(outcome_values, labels)
 
     return {
         "run_index": candidate["run_index"],
@@ -742,11 +799,20 @@ def _build_gridsearch_candidates(k_values, algorithms, seeds) -> List[Dict[str, 
     return planned
 
 
-def raster_gridsearch(scores, yield_array, valid_mask, connectivity, cfg):
+def raster_gridsearch(
+    scores,
+    outcome_array,
+    valid_mask,
+    connectivity,
+    cfg,
+    outcome_name: Optional[str] = None,
+):
     algorithms = cfg["clustering"].get("algorithms", ["kmeans"])
     seeds = cfg["clustering"].get("seeds", [42])
     sample_size = cfg.get("raster", {}).get("silhouette_sample_size", 20000)
-    y_valid = yield_array.reshape(-1)[valid_mask] if yield_array is not None else None
+    outcome_values = (
+        outcome_array.reshape(-1)[valid_mask] if outcome_array is not None else None
+    )
     best = None
     best_score = None
     best_ch = None
@@ -773,8 +839,12 @@ def raster_gridsearch(scores, yield_array, valid_mask, connectivity, cfg):
         nonlocal best, best_score, best_ch, best_ch_score
         row = result["row"]
         labels = result["labels"]
+        if outcome_values is not None:
+            row["outcome_name"] = outcome_name
+            score = (row["vr"], row.get("asc", 0.0))
+        else:
+            score = (row.get("asc", 0.0),)
         leaderboard.append(row.copy())
-        score = (row.get("vr", 0.0), row.get("asc", 0.0))
         vr_text = _format_metric(row.get("vr"))
         asc_text = _format_metric(row.get("asc"))
         ch_text = _format_metric(row.get("ch_score"))
@@ -796,14 +866,14 @@ def raster_gridsearch(scores, yield_array, valid_mask, connectivity, cfg):
                 best_ch = {"labels": labels, "metrics": row.copy()}
                 print(f"[raster][gridsearch] new CH best: {result['label']} with ch={ch_text}")
 
-    _set_gridsearch_context(scores, y_valid, connectivity_sym, sample_size)
+    _set_gridsearch_context(scores, outcome_values, connectivity_sym, sample_size)
     if parallel and n_jobs > 1:
         for candidate in candidates:
             print(f"[raster][gridsearch] {candidate['run_index']}/{total} queued {candidate['label']}")
         with ProcessPoolExecutor(
             max_workers=n_jobs,
             initializer=_set_gridsearch_context,
-            initargs=(scores, y_valid, connectivity_sym, sample_size),
+            initargs=(scores, outcome_values, connectivity_sym, sample_size),
         ) as executor:
             futures = [executor.submit(_run_gridsearch_candidate, candidate) for candidate in candidates]
             for future in as_completed(futures):
@@ -812,12 +882,20 @@ def raster_gridsearch(scores, yield_array, valid_mask, connectivity, cfg):
         for candidate in candidates:
             print(f"[raster][gridsearch] {candidate['run_index']}/{total} starting {candidate['label']}")
             handle_result(_run_gridsearch_candidate(candidate))
-    if best is not None:
+    if best is not None and outcome_values is not None:
         metrics = best["metrics"]
         print(
-            "[raster][gridsearch] best by yield variance reduction: "
+            f"[raster][gridsearch] best by {outcome_name or 'outcome'} variance reduction: "
             f"algo={metrics.get('algo')}, k={metrics.get('k')}, seed={metrics.get('seed')} "
             f"| vr={_format_metric(metrics.get('vr'))}, asc={_format_metric(metrics.get('asc'))}, "
+            f"ch={_format_metric(metrics.get('ch_score'))}"
+        )
+    elif best is not None:
+        metrics = best["metrics"]
+        print(
+            "[raster][gridsearch] best by silhouette score: "
+            f"algo={metrics.get('algo')}, k={metrics.get('k')}, seed={metrics.get('seed')} "
+            f"| asc={_format_metric(metrics.get('asc'))}, "
             f"ch={_format_metric(metrics.get('ch_score'))}"
         )
     if best_ch is not None:
@@ -828,7 +906,8 @@ def raster_gridsearch(scores, yield_array, valid_mask, connectivity, cfg):
             f"| ch={_format_metric(metrics.get('ch_score'))}, asc={_format_metric(metrics.get('asc'))}, "
             f"vr={_format_metric(metrics.get('vr'))}"
         )
-    selections = {"yield_variance": best}
+    primary_key = "outcome_variance" if outcome_values is not None else "internal_metrics"
+    selections = {primary_key: best}
     if best_ch is not None:
         selections["ch_score"] = best_ch
     return best, leaderboard, selections
@@ -840,7 +919,11 @@ def _format_metric(value: Any) -> str:
     return "n/a"
 
 
-def write_metric_comparison_plots(leaderboard: List[Dict[str, Any]], preview_dir: Path) -> List[str]:
+def write_metric_comparison_plots(
+    leaderboard: List[Dict[str, Any]],
+    preview_dir: Path,
+    outcome_name: Optional[str] = None,
+) -> List[str]:
     if not leaderboard:
         return []
 
@@ -852,7 +935,12 @@ def write_metric_comparison_plots(leaderboard: List[Dict[str, Any]], preview_dir
     paths: List[str] = []
     metric_specs = [
         ("ch_score", "Calinski-Harabasz Pseudo-F Score", "Inter-cluster / intra-cluster dispersion, higher is better", False),
-        ("vr", "Best Yield Variance Reduction", "Higher is better", False),
+        (
+            "vr",
+            f"Best {outcome_name or 'Outcome'} Variance Reduction",
+            "Higher is better",
+            False,
+        ),
         ("asc", "Best Silhouette Score", "Higher is better", False),
         ("anova_p", "Best ANOVA Significance", "-log10(p), higher is better", True),
     ]
@@ -895,11 +983,29 @@ def write_metric_comparison_plots(leaderboard: List[Dict[str, Any]], preview_dir
     return paths
 
 
-def write_cluster_outputs(selections, leaderboard, valid_mask, shape2d, profile, output_dir: Path, preview_dir: Path) -> List[str]:
+def write_cluster_outputs(
+    selections,
+    leaderboard,
+    valid_mask,
+    shape2d,
+    profile,
+    output_dir: Path,
+    preview_dir: Path,
+    outcome_name: Optional[str] = None,
+) -> List[str]:
     output_dir.mkdir(parents=True, exist_ok=True)
+    preview_dir.mkdir(parents=True, exist_ok=True)
     written_paths: List[str] = []
+    primary_key = (
+        "outcome_variance" if "outcome_variance" in selections else "internal_metrics"
+    )
+    primary_title = (
+        f"Best Cluster Solution by {outcome_name} Variance Reduction"
+        if primary_key == "outcome_variance"
+        else "Best Cluster Solution by Silhouette Score"
+    )
     output_specs = [
-        ("yield_variance", "best_clusters", "clusters_best", "Best Cluster Solution by Yield Variance Reduction"),
+        (primary_key, "best_clusters", "clusters_best", primary_title),
         ("ch_score", "best_ch_score_clusters", "clusters_best_ch_score", "Best Cluster Solution by Calinski-Harabasz Pseudo-F"),
     ]
     for key, stem, preview_stem, title in output_specs:

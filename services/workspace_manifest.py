@@ -122,10 +122,10 @@ ARTIFACT_SUFFIX_TYPES = {
 }
 
 METRIC_DEFINITIONS = {
-    "vr": "yield variance reduction; higher is better",
+    "vr": "outcome variance reduction; higher is better",
     "ch_score": "Calinski-Harabasz score; higher is better",
     "asc": "average silhouette coefficient; higher is better",
-    "anova_p": "yield ANOVA p-value; lower is stronger evidence of yield differences",
+    "anova_p": "outcome ANOVA p-value; lower is stronger evidence of outcome differences",
 }
 
 
@@ -253,8 +253,8 @@ def classify_workspace_artifact(path: Path, output_root: Path, project_id: str, 
         if lower == "best_clusters.tif":
             artifact_id = "best_clusters"
             semantic_role = "best_vr_cluster_raster"
-            title = "Best cluster raster by yield variance reduction"
-            description = "GeoTIFF cluster raster selected using yield variance reduction."
+            title = "Best cluster raster by outcome variance reduction"
+            description = "GeoTIFF cluster raster selected using outcome variance reduction."
             metric = "vr"
         elif lower == "best_ch_score_clusters.tif":
             artifact_id = "best_ch_score_clusters"

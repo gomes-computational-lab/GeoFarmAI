@@ -81,3 +81,69 @@ def test_current_vector_pipeline_smoke_with_distributed_sample_data(sample_csv_p
         assert artifacts[key]
         assert __import__("pathlib").Path(artifacts[key]).is_file()
     assert artifacts["images"]
+
+
+@pytest.mark.integration
+def test_vector_pipeline_smoke_without_outcome_generates_internal_metrics_and_maps(
+    sample_csv_paths, tmp_path
+):
+    soil_path, _ = sample_csv_paths
+    soil_source = pd.read_csv(soil_path)
+    soil_subset = soil_source.iloc[np.linspace(0, len(soil_source) - 1, 40, dtype=int)]
+    test_soil = tmp_path / "predictors.csv"
+    soil_subset.to_csv(test_soil, index=False)
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
+    cfg = {
+        "project": {
+            "name": "unsupervised_smoke",
+            "crs_in": "EPSG:4326",
+            "auto_reproject_to_utm": True,
+            "soil": {
+                "path": str(test_soil),
+                "x": "Longitude",
+                "y": "Latitude",
+                "id_column": None,
+                "variables": ["Slope", "EC_DP", "Moisture"],
+                "required_variables": ["Slope", "EC_DP"],
+            },
+            "outcome": None,
+        },
+        "grid": {"cell_size_m": 100.0, "method": "idw", "buffer_m": 15.0},
+        "weights": {"k": 2},
+        "spatial_pca": {
+            "engine": "multispaeti",
+            "use_r_multispati": False,
+            "n_components": 2,
+        },
+        "clustering": {"algorithms": ["kmeans"], "k_values": [2, 3], "seeds": [42]},
+        "raster": {"enabled": False},
+        "postprocess": {"min_area_m2": 0.0},
+        "export": {"basemap": "none", "out_dir": str(output_dir)},
+    }
+
+    predictors, outcome_points, outcome_name = flow_mzd.ingest_sources.fn(cfg)
+    predictors, outcome_points = flow_mzd.reproject_to_meters.fn(
+        predictors, outcome_points, cfg
+    )
+    grid, _ = flow_mzd.make_density_grid.fn(predictors, outcome_points, cfg)
+    table = flow_mzd.reconcile_to_grid.fn(
+        predictors, outcome_points, grid, cfg, outcome_name
+    )
+    components, _, _ = flow_mzd.components_from_grid.fn(table, cfg)
+    best, leaderboard = flow_mzd.gridsearch.fn(table, components, cfg, outcome_name)
+    artifacts = flow_mzd.postprocess_and_export.fn(
+        table,
+        best["labels"],
+        best["metrics"],
+        leaderboard,
+        cfg,
+        outcome_name=outcome_name,
+    )
+
+    assert outcome_name is None
+    assert all({"asc", "ch_score"}.issubset(row) for row in leaderboard)
+    assert all("vr" not in row and "anova_p" not in row for row in leaderboard)
+    assert artifacts["gpkg"] and __import__("pathlib").Path(artifacts["gpkg"]).is_file()
+    assert artifacts["pdf"] and __import__("pathlib").Path(artifacts["pdf"]).is_file()
+    assert artifacts["images"]

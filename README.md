@@ -145,6 +145,32 @@ The main configuration is `configs/project.yaml`. Key sections are:
 
 Before running, confirm that the input files in `data/` match the paths and column names in `configs/project.yaml`.
 
+Outcome-based validation is optional. New configurations declare a column in
+the predictor source explicitly:
+
+```yaml
+project:
+  outcome: nitrate
+```
+
+or declare a separate source:
+
+```yaml
+project:
+  outcome:
+    name: nitrate
+    column: nitrate_mg_kg
+    path: data/nitrate.csv
+    x: Longitude
+    y: Latitude
+```
+
+Use `outcome: null`, or omit both the generic outcome and legacy yield
+sections, for an unsupervised analysis. In that mode PCA/MULTISPATI,
+clustering, internal metrics, and map export continue normally; variance
+reduction and ANOVA are omitted. The historical `project.yield` section is
+still accepted through a compatibility adapter.
+
 ## Run from the terminal
 
 ### Run the baseline pipeline

@@ -469,7 +469,7 @@ def _plan_warnings(request: AnalysisSetupRequest, planned_runs: List[PlannedRun]
     if request.parallel_gridsearch and request.n_jobs and os.cpu_count() and request.n_jobs > os.cpu_count():
         warnings.append(f"Selected workers exceed detected CPU count ({os.cpu_count()}).")
     if "vr" not in request.validation_metrics and "anova_p" not in request.validation_metrics:
-        warnings.append("No yield-validation metric is selected; agronomic comparison will be limited.")
+        warnings.append("No outcome-validation metric is selected; external comparison will be limited.")
     if len(set(request.seeds)) < 2 and any(algo in SEEDED_ALGORITHMS for algo in request.algorithms):
         warnings.append("Only one seed is selected; seed-stability analysis will be limited.")
     if request.generate_previews and request.generate_report and len(planned_runs) > WORKLOAD_THRESHOLDS["moderate"]:
