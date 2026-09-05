@@ -17,5 +17,9 @@ class DataSourceError(DataModelError):
     """Raised when an input source cannot form a valid canonical dataset."""
 
 
+class HarmonizationError(GeoFarmAIError, ValueError):
+    """Raised when spatial sources cannot be harmonized safely."""
+
+
 class RMultispatiUnavailableError(GeoFarmAIError, RuntimeError):
     """Raised when explicitly requested R MULTISPATI support cannot run."""

@@ -42,20 +42,6 @@ class FieldDataset:
         if duplicates:
             raise DataModelError(f"FieldDataset contains duplicate source identifiers: {duplicates}.")
 
-        registry: dict[str, VariableSpec] = {}
-        conflicts: list[str] = []
-        for source in sources:
-            for spec in source.variables:
-                existing = registry.get(spec.name)
-                if existing is None:
-                    registry[spec.name] = spec
-                elif existing != spec:
-                    conflicts.append(spec.name)
-        if conflicts:
-            raise SchemaValidationError(
-                "FieldDataset contains conflicting specifications for variables: "
-                f"{sorted(set(conflicts))}."
-            )
         object.__setattr__(self, "sources", sources)
 
     @classmethod
@@ -244,11 +230,14 @@ class FieldDataset:
 
     @property
     def variable_specs(self) -> tuple[VariableSpec, ...]:
-        by_name: dict[str, VariableSpec] = {}
-        for source in self.sources:
-            for spec in source.variables:
-                by_name.setdefault(spec.name, spec)
-        return tuple(by_name.values())
+        """Return declarations in source order without erasing cross-source names.
+
+        A variable is identified canonically by its source ID and name. Separate
+        sources may therefore use the same name with different explicit roles.
+        Duplicate declarations within one source remain invalid.
+        """
+
+        return tuple(spec for source in self.sources for spec in source.variables)
 
     @property
     def predictors(self) -> tuple[VariableSpec, ...]:
@@ -283,15 +272,22 @@ class FieldDataset:
 
     @property
     def variable_metadata(self) -> dict[str, dict[str, str | None]]:
-        return {
-            spec.name: {
-                "role": spec.role.value,
-                "domain": spec.domain,
-                "units": spec.units,
-                "description": spec.description,
-            }
-            for spec in self.variable_specs
-        }
+        counts: dict[str, int] = {}
+        for source in self.sources:
+            for spec in source.variables:
+                counts[spec.name] = counts.get(spec.name, 0) + 1
+
+        metadata: dict[str, dict[str, str | None]] = {}
+        for source in self.sources:
+            for spec in source.variables:
+                key = spec.name if counts[spec.name] == 1 else f"{source.source_id}:{spec.name}"
+                metadata[key] = {
+                    "role": spec.role.value,
+                    "domain": spec.domain,
+                    "units": spec.units,
+                    "description": spec.description,
+                }
+        return metadata
 
     def get_source(self, source_id: str) -> DataSource:
         for source in self.sources:

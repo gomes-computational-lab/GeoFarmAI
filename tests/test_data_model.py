@@ -320,12 +320,16 @@ def test_coordinate_role_conflict_is_rejected():
         )
 
 
-def test_conflicting_cross_source_variable_specifications_are_rejected():
+def test_same_name_cross_source_variable_specifications_preserve_both_roles():
     predictor = _source("sensor", "nitrate", "predictor")
     outcome = _source("lab", "nitrate", "outcome")
 
-    with pytest.raises(SchemaValidationError, match="conflicting specifications"):
-        FieldDataset.from_sources([predictor, outcome])
+    dataset = FieldDataset.from_sources([predictor, outcome])
+
+    assert dataset.predictor_names == ("nitrate",)
+    assert dataset.outcome_names == ("nitrate",)
+    assert dataset.variable_metadata["sensor:nitrate"]["role"] == "predictor"
+    assert dataset.variable_metadata["lab:nitrate"]["role"] == "outcome"
 
 
 def test_duplicate_source_identifiers_are_rejected():
