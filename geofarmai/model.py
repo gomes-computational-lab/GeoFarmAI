@@ -33,6 +33,11 @@ _SUPPORTED_DECOMPOSITIONS = {"none", "pca", "multispati"}
 _SUPPORTED_CLUSTERING = {"kmeans", "gmm", "fcm", "agglomerative"}
 _CLUSTERING_ALIASES = {"hierarchical": "agglomerative"}
 _SUPPORTED_MULTISPATI_ENGINES = {"python", "r"}
+_SELECTION_DIRECTIONS = {
+    "variance_reduction": "maximize",
+    "silhouette": "maximize",
+    "calinski_harabasz": "maximize",
+}
 
 
 class GeoFarmModel:
@@ -40,7 +45,10 @@ class GeoFarmModel:
 
     The class is an orchestration layer. Harmonization, decomposition,
     clustering, and outcome validation remain implemented by GeoFarmAI's
-    existing scientific modules.
+    existing scientific modules. ``selection`` is explicitly one of
+    ``"variance_reduction"``, ``"silhouette"``,
+    ``"calinski_harabasz"``, or ``None``. All supported criteria maximize;
+    exact ties retain stable candidate generation order.
     """
 
     def __init__(
@@ -54,6 +62,7 @@ class GeoFarmModel:
         multispati_engine: str = "python",
         weights_k: int = 8,
         silhouette_sample_size: int | None = None,
+        selection: str | None = "silhouette",
         selection_outcome: str | VariableIdentity | None = None,
         harmonization_strategy: str = "auto",
         reconciliation_method: str = "idw",
@@ -67,6 +76,7 @@ class GeoFarmModel:
         self.multispati_engine = multispati_engine
         self.weights_k = weights_k
         self.silhouette_sample_size = silhouette_sample_size
+        self.selection = selection
         self.selection_outcome = selection_outcome
         self.harmonization_strategy = harmonization_strategy
         self.reconciliation_method = reconciliation_method
@@ -79,6 +89,7 @@ class GeoFarmModel:
         decomposition = self._normalized_decomposition()
         algorithms = self._normalized_algorithms()
         k_values = self._normalized_k_values()
+        selection = self._normalized_selection()
         harmonized = self._harmonized(data)
         predictors = harmonized.predictors.astype(float)
         self._validate_analysis_data(predictors, k_values)
@@ -95,7 +106,7 @@ class GeoFarmModel:
         )
         analysis_matrix = predictors if scores is None else scores
         reported_scores = None if decomposition == "none" else scores
-        selection_outcome = self._resolve_selection_outcome(harmonized)
+        selection_outcome = self._resolve_selection_outcome(harmonized, selection)
 
         candidates: list[CandidateSolution] = []
         for candidate_k in k_values:
@@ -118,15 +129,13 @@ class GeoFarmModel:
                     )
                 )
 
-        selected = max(
-            candidates,
-            key=lambda candidate: self._selection_score(candidate, selection_outcome),
-        )
+        selected = self._select_candidate(candidates, selection, selection_outcome)
         predictor_names = harmonized.predictor_names
         outcome_names = harmonized.outcome_names
         configuration = self.get_params()
         configuration["clustering"] = algorithms
         configuration["k"] = k_values
+        configuration["selection"] = selection
         configuration["selection_outcome_used"] = selection_outcome
 
         result = GeoFarmResult(
@@ -137,10 +146,22 @@ class GeoFarmModel:
             outcome_names=outcome_names,
             component_scores=None if reported_scores is None else reported_scores.copy(),
             component_loadings=None if loadings is None else loadings.copy(),
-            internal_metrics=dict(selected.internal_metrics),
-            outcome_validation_metrics={
-                name: dict(metrics) for name, metrics in selected.outcome_metrics.items()
-            },
+            internal_metrics=(
+                {} if selected is None else dict(selected.internal_metrics)
+            ),
+            outcome_validation_metrics=(
+                {}
+                if selected is None
+                else {
+                    name: dict(metrics)
+                    for name, metrics in selected.outcome_metrics.items()
+                }
+            ),
+            selection_metric=selection,
+            selection_outcome=selection_outcome,
+            selection_direction=(
+                None if selection is None else _SELECTION_DIRECTIONS[selection]
+            ),
             spatial_metadata={
                 "crs": harmonized.crs.to_string(),
                 "observation_count": len(harmonized.geometry),
@@ -169,7 +190,7 @@ class GeoFarmModel:
         self.component_loadings_ = None if loadings is None else loadings.copy()
         self.candidate_solutions_ = tuple(candidates)
         self.selected_solution_ = selected
-        self.labels_ = selected.labels.copy()
+        self.labels_ = None if selected is None else selected.labels.copy()
         self.n_features_in_ = predictors.shape[1]
         self.feature_names_in_ = np.asarray(predictor_names, dtype=object)
         self.result_ = result
@@ -178,7 +199,13 @@ class GeoFarmModel:
     def fit_predict(self, data: FieldDataset | HarmonizedFieldDataset) -> np.ndarray:
         """Fit the analysis and return selected zone labels."""
 
-        return self.fit(data).zone_labels
+        labels = self.fit(data).zone_labels
+        if labels is None:
+            raise ModelConfigurationError(
+                "fit_predict() requires a selection policy; selection=None retains "
+                "candidates without selecting zone labels."
+            )
+        return labels
 
     def get_result(self) -> GeoFarmResult:
         """Return the most recent result with a clear pre-fit error."""
@@ -200,6 +227,7 @@ class GeoFarmModel:
             "multispati_engine": self.multispati_engine,
             "weights_k": self.weights_k,
             "silhouette_sample_size": self.silhouette_sample_size,
+            "selection": self.selection,
             "selection_outcome": self.selection_outcome,
             "harmonization_strategy": self.harmonization_strategy,
             "reconciliation_method": self.reconciliation_method,
@@ -277,6 +305,17 @@ class GeoFarmModel:
         if len(set(values)) != len(values):
             raise ModelConfigurationError("Candidate k values must not be duplicated.")
         return values
+
+    def _normalized_selection(self) -> str | None:
+        if self.selection is None:
+            return None
+        selection = str(self.selection).lower().strip()
+        if selection not in _SELECTION_DIRECTIONS:
+            raise ModelConfigurationError(
+                f"Unsupported selection metric {self.selection!r}. Choose one of: "
+                "variance_reduction, silhouette, calinski_harabasz, or None."
+            )
+        return selection
 
     def _validate_analysis_data(
         self,
@@ -444,7 +483,7 @@ class GeoFarmModel:
         labels: np.ndarray,
     ) -> dict[str, dict[str, float | int | None]]:
         display_names = harmonized.display_names
-        metrics: dict[str, dict[str, float | None]] = {}
+        metrics: dict[str, dict[str, float | int | None]] = {}
         for identity in harmonized.outcome_identities:
             values = harmonized.outcomes[identity.tuple].to_numpy(dtype=float)
             valid = np.isfinite(values)
@@ -473,17 +512,30 @@ class GeoFarmModel:
     def _resolve_selection_outcome(
         self,
         harmonized: HarmonizedFieldDataset,
+        selection: str | None,
     ) -> str | None:
         identities = harmonized.outcome_identities
-        if not identities:
+        if selection != "variance_reduction":
             if self.selection_outcome is not None:
                 raise ModelConfigurationError(
-                    "selection_outcome was provided, but the dataset has no outcomes."
+                    "selection_outcome is only valid when "
+                    "selection='variance_reduction'."
                 )
             return None
+
+        if not identities:
+            raise ModelConfigurationError(
+                "selection='variance_reduction' requires at least one explicitly "
+                "declared outcome variable."
+            )
         names = harmonized.display_names
         if self.selection_outcome is None:
-            return names[identities[0]] if len(identities) == 1 else None
+            if len(identities) == 1:
+                return names[identities[0]]
+            raise ModelConfigurationError(
+                "selection='variance_reduction' with multiple outcomes requires an "
+                "explicit selection_outcome."
+            )
 
         if isinstance(self.selection_outcome, VariableIdentity):
             matches = [identity for identity in identities if identity == self.selection_outcome]
@@ -502,26 +554,65 @@ class GeoFarmModel:
         return names[matches[0]]
 
     @staticmethod
-    def _selection_score(
-        candidate: CandidateSolution,
+    def _select_candidate(
+        candidates: list[CandidateSolution],
+        selection: str | None,
         outcome_name: str | None,
-    ) -> tuple[float, float, float]:
-        silhouette = _finite_score(candidate.internal_metrics.get("asc"))
-        ch_score = _finite_score(candidate.internal_metrics.get("ch_score"))
-        if outcome_name is None:
-            return silhouette, ch_score, 0.0
-        variance = _finite_score(
-            candidate.outcome_metrics.get(outcome_name, {}).get("variance_reduction")
+    ) -> CandidateSolution | None:
+        """Select by one requested metric, preserving generation order for ties."""
+
+        if selection is None:
+            return None
+        direction = _SELECTION_DIRECTIONS[selection]
+        selected: CandidateSolution | None = None
+        selected_value: float | None = None
+        for candidate in candidates:
+            value = _candidate_metric(candidate, selection, outcome_name)
+            if value is None:
+                continue
+            if selected is None:
+                selected = candidate
+                selected_value = value
+                continue
+            is_better = (
+                value > selected_value
+                if direction == "maximize"
+                else value < selected_value
+            )
+            if is_better:
+                selected = candidate
+                selected_value = value
+        if selected is None:
+            detail = (
+                f" for outcome {outcome_name!r}"
+                if selection == "variance_reduction"
+                else ""
+            )
+            raise ModelConfigurationError(
+                f"Selection metric {selection!r}{detail} is unavailable for every "
+                "candidate; no different metric was substituted."
+            )
+        return selected
+
+
+def _candidate_metric(
+    candidate: CandidateSolution,
+    selection: str,
+    outcome_name: str | None,
+) -> float | None:
+    if selection == "silhouette":
+        value = candidate.internal_metrics.get("asc")
+    elif selection == "calinski_harabasz":
+        value = candidate.internal_metrics.get("ch_score")
+    else:
+        value = candidate.outcome_metrics.get(outcome_name or "", {}).get(
+            "variance_reduction"
         )
-        return variance, silhouette, ch_score
-
-
-def _finite_score(value: Any) -> float:
     try:
         number = float(value)
     except (TypeError, ValueError):
-        return float("-inf")
-    return number if np.isfinite(number) else float("-inf")
+        return None
+    return number if np.isfinite(number) else None
 
 
 __all__ = ["GeoFarmModel"]
