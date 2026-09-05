@@ -25,6 +25,7 @@ model = GeoFarmModel(
     clustering=["kmeans", "gmm", "fcm"],
     k=range(2, 6),
     random_state=42,
+    selection="variance_reduction",
 )
 result = model.fit(data)
 
@@ -39,12 +40,14 @@ uses the existing `multispaeti` engine; set `multispati_engine="r"` to request
 the optional existing R implementation. Explicit MULTISPATI requests fail
 clearly if their selected engine is unavailable and never silently become PCA.
 
-With one outcome, candidate selection preserves the established priority of
-variance reduction followed by silhouette. Without an outcome, selection uses
-silhouette followed by Calinski-Harabasz. For multiple outcomes, specify
-`selection_outcome`; otherwise selection remains internal while validation
-metrics are reported for every outcome. Outcome columns never enter the
-predictor matrix.
+The canonical `selection` values are `"variance_reduction"`, `"silhouette"`,
+`"calinski_harabasz"`, and `None`; the default is `"silhouette"`. Each metric
+is maximized independently, and exact ties retain candidate generation order.
+Variance-reduction selection requires an explicitly declared outcome. For
+multiple outcomes, also specify `selection_outcome`. Other applicable metrics
+are still calculated for validation and never silently replace the requested
+criterion. With `selection=None`, every candidate is retained and no candidate
+is declared selected. Outcome columns never enter the predictor matrix.
 
 `run_pipeline(...)` remains available as a deprecated compatibility wrapper.
 New code should use `GeoFarmModel.fit(...)`.

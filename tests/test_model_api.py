@@ -272,6 +272,7 @@ def test_multiple_outcomes_require_explicit_choice_only_for_external_selection()
     external = GeoFarmModel(
         decomposition="none",
         k=[2, 3],
+        selection="variance_reduction",
         selection_outcome="protein",
     ).fit(data)
 
@@ -348,6 +349,7 @@ def test_ambiguous_duplicate_outcome_name_requires_source_identity():
     result = GeoFarmModel(
         decomposition="none",
         k=2,
+        selection="variance_reduction",
         selection_outcome=VariableIdentity("field", "nitrate"),
     ).fit(data)
 
