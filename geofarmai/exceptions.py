@@ -27,3 +27,15 @@ class OutcomeConfigurationError(GeoFarmAIError, ValueError):
 
 class RMultispatiUnavailableError(GeoFarmAIError, RuntimeError):
     """Raised when explicitly requested R MULTISPATI support cannot run."""
+
+
+class MultispatiUnavailableError(GeoFarmAIError, RuntimeError):
+    """Raised when explicitly requested Python MULTISPATI support cannot run."""
+
+
+class ModelConfigurationError(GeoFarmAIError, ValueError):
+    """Raised when a GeoFarmModel configuration cannot define a valid fit."""
+
+
+class ModelNotFittedError(GeoFarmAIError, RuntimeError):
+    """Raised when fitted GeoFarmModel state is requested before fit()."""

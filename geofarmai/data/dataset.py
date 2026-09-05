@@ -62,14 +62,18 @@ class FieldDataset:
         path: str | Path,
         *,
         source_id: str | None = None,
-        variables: Sequence[VariableSpec],
-        coordinates: CoordinateSpec | None = None,
+        variables: Sequence[VariableSpec] | None = None,
+        predictors: Sequence[str] | None = None,
+        outcome: str | Sequence[str] | None = None,
+        coordinates: CoordinateSpec | tuple[str, str] | None = None,
         x: str | None = None,
         y: str | None = None,
         crs: CRS | str | int | None = None,
         metadata: Mapping[str, Any] | None = None,
         read_csv_kwargs: Mapping[str, Any] | None = None,
     ) -> "FieldDataset":
+        variables = _constructor_variables(variables, predictors, outcome)
+        coordinates, x, y, crs = _constructor_coordinates(coordinates, x, y, crs)
         return cls.from_sources(
             [
                 DataSource.from_csv(
@@ -92,13 +96,17 @@ class FieldDataset:
         dataframe: pd.DataFrame,
         *,
         source_id: str = "dataframe",
-        variables: Sequence[VariableSpec],
-        coordinates: CoordinateSpec | None = None,
+        variables: Sequence[VariableSpec] | None = None,
+        predictors: Sequence[str] | None = None,
+        outcome: str | Sequence[str] | None = None,
+        coordinates: CoordinateSpec | tuple[str, str] | None = None,
         x: str | None = None,
         y: str | None = None,
         crs: CRS | str | int | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> "FieldDataset":
+        variables = _constructor_variables(variables, predictors, outcome)
+        coordinates, x, y, crs = _constructor_coordinates(coordinates, x, y, crs)
         return cls.from_sources(
             [
                 DataSource.from_dataframe(
@@ -120,13 +128,17 @@ class FieldDataset:
         geodataframe: gpd.GeoDataFrame,
         *,
         source_id: str = "geodataframe",
-        variables: Sequence[VariableSpec],
-        coordinates: CoordinateSpec | None = None,
+        variables: Sequence[VariableSpec] | None = None,
+        predictors: Sequence[str] | None = None,
+        outcome: str | Sequence[str] | None = None,
+        coordinates: CoordinateSpec | tuple[str, str] | None = None,
         x: str | None = None,
         y: str | None = None,
         crs: CRS | str | int | None = None,
         metadata: Mapping[str, Any] | None = None,
     ) -> "FieldDataset":
+        variables = _constructor_variables(variables, predictors, outcome)
+        coordinates, x, y, crs = _constructor_coordinates(coordinates, x, y, crs)
         return cls.from_sources(
             [
                 DataSource.from_geodataframe(
@@ -299,6 +311,56 @@ class FieldDataset:
 def _legacy_path(root: Path, value: str | Path) -> Path:
     path = Path(value)
     return path if path.is_absolute() else root / path
+
+
+def _constructor_variables(
+    variables: Sequence[VariableSpec] | None,
+    predictors: Sequence[str] | None,
+    outcome: str | Sequence[str] | None,
+) -> tuple[VariableSpec, ...]:
+    """Normalize concise constructor arguments into explicit role declarations."""
+
+    if variables is not None and (predictors is not None or outcome is not None):
+        raise SchemaValidationError(
+            "Pass either variables=[VariableSpec(...)] or predictors/outcome, not both."
+        )
+    if variables is not None:
+        return tuple(variables)
+
+    declarations: list[VariableSpec] = []
+    if predictors is not None:
+        if isinstance(predictors, (str, bytes)):
+            raise SchemaValidationError("predictors must be a sequence of column names.")
+        declarations.extend(VariableSpec(name, VariableRole.PREDICTOR) for name in predictors)
+
+    if outcome is not None:
+        outcome_names = (outcome,) if isinstance(outcome, str) else tuple(outcome)
+        declarations.extend(VariableSpec(name, VariableRole.OUTCOME) for name in outcome_names)
+
+    if not declarations:
+        raise SchemaValidationError(
+            "Declare variables explicitly, or provide predictors and an optional outcome."
+        )
+    return tuple(declarations)
+
+
+def _constructor_coordinates(
+    coordinates: CoordinateSpec | tuple[str, str] | None,
+    x: str | None,
+    y: str | None,
+    crs: CRS | str | int | None,
+) -> tuple[CoordinateSpec | None, str | None, str | None, CRS | str | int | None]:
+    """Accept the concise ``coordinates=(x, y)`` public-API spelling."""
+
+    if isinstance(coordinates, tuple):
+        if len(coordinates) != 2:
+            raise SchemaValidationError("coordinates must contain exactly two column names.")
+        if x is not None or y is not None:
+            raise SchemaValidationError(
+                "Pass either coordinates=(x, y) or x/y arguments, not both."
+            )
+        return CoordinateSpec(coordinates[0], coordinates[1], crs), None, None, None
+    return coordinates, x, y, crs
 
 
 def _validate_legacy_section(

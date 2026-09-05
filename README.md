@@ -1,6 +1,53 @@
-# Ag-GPT Management Zone Design
+# GeoFarmAI
 
-Ag-GPT is a local workflow for creating agronomic management zones from soil and yield point data. The project reads field CSV data, builds a spatial grid, interpolates soil and yield attributes onto that grid, computes spatial components, clusters grid cells into candidate management zones, evaluates zone quality, and exports maps and metrics. It also includes an LLM-powered assistant that can summarize results, inspect outputs, and run configured workflows through either the terminal or a Streamlit interface.
+GeoFarmAI is a reusable scientific Python library for geospatial agricultural
+management-zone delineation. Its canonical API accepts one or many explicitly
+role-labelled data sources, harmonizes their spatial support, runs existing
+decomposition and clustering implementations, and returns every candidate
+solution with internal and optional outcome-validation metrics. The scientific
+package does not require an LLM or application server.
+
+## Primary Python API
+
+```python
+from geofarmai import FieldDataset, GeoFarmModel
+
+data = FieldDataset.from_csv(
+    "field.csv",
+    coordinates=("longitude", "latitude"),
+    crs="EPSG:4326",
+    predictors=["EC", "moisture", "elevation"],
+    outcome="yield",  # optional; any explicitly selected numeric outcome
+)
+
+model = GeoFarmModel(
+    decomposition="multispati",
+    clustering=["kmeans", "gmm", "fcm"],
+    k=range(2, 6),
+    random_state=42,
+)
+result = model.fit(data)
+
+print(result.summary())
+table = result.to_dataframe()
+artifacts = result.export("outputs/field_zones.gpkg")
+```
+
+Use `decomposition="none"`, `"pca"`, or `"multispati"`. The `none` pathway
+retains the existing standardized-but-unreduced feature behavior. Python MULTISPATI
+uses the existing `multispaeti` engine; set `multispati_engine="r"` to request
+the optional existing R implementation. Explicit MULTISPATI requests fail
+clearly if their selected engine is unavailable and never silently become PCA.
+
+With one outcome, candidate selection preserves the established priority of
+variance reduction followed by silhouette. Without an outcome, selection uses
+silhouette followed by Calinski-Harabasz. For multiple outcomes, specify
+`selection_outcome`; otherwise selection remains internal while validation
+metrics are reported for every outcome. Outcome columns never enter the
+predictor matrix.
+
+`run_pipeline(...)` remains available as a deprecated compatibility wrapper.
+New code should use `GeoFarmModel.fit(...)`.
 
 ## Repository layout
 
