@@ -79,7 +79,7 @@ def test_candidate_k_evaluation_selects_current_vr_then_silhouette_maximum(separ
     table = pd.DataFrame({"yield": np.repeat([1.0, 10.0, 20.0], 3)})
     scores = pd.DataFrame(separated_matrix)
     cfg = {
-        "project": {"yield_column": "yield"},
+        "project": {"outcome": "yield"},
         "clustering": {"algorithms": ["kmeans"], "k_values": [2, 3, 4], "seeds": [42]},
     }
 
@@ -92,11 +92,24 @@ def test_candidate_k_evaluation_selects_current_vr_then_silhouette_maximum(separ
     assert best["metrics"] == expected
 
 
+def test_column_named_yield_is_not_inferred_as_outcome(separated_matrix):
+    table = pd.DataFrame({"yield": np.repeat([1.0, 10.0, 20.0], 3)})
+    scores = pd.DataFrame(separated_matrix)
+    cfg = {
+        "project": {},
+        "clustering": {"algorithms": ["kmeans"], "k_values": [2, 3], "seeds": [42]},
+    }
+
+    _, leaderboard = flow_mzd.gridsearch.fn(table, scores, cfg)
+
+    assert all("vr" not in row and "anova_p" not in row for row in leaderboard)
+
+
 def test_candidate_k_evaluation_without_outcome_uses_current_silhouette_fallback(separated_matrix):
     table = pd.DataFrame(index=np.arange(len(separated_matrix)))
     scores = pd.DataFrame(separated_matrix)
     cfg = {
-        "project": {"yield_column": "yield"},
+        "project": {"outcome": None},
         "clustering": {"algorithms": ["kmeans"], "k_values": [2, 3], "seeds": [42]},
     }
 
@@ -105,6 +118,57 @@ def test_candidate_k_evaluation_without_outcome_uses_current_silhouette_fallback
     assert all("vr" not in row and "anova_p" not in row for row in leaderboard)
     expected = max(leaderboard, key=lambda row: row["asc"])
     assert best["metrics"] == expected
+
+
+def test_candidate_evaluation_uses_explicit_nitrate_outcome(separated_matrix):
+    table = pd.DataFrame({"nitrate": np.repeat([1.0, 10.0, 20.0], 3)})
+    scores = pd.DataFrame(separated_matrix)
+    cfg = {
+        "project": {"outcome": "nitrate"},
+        "clustering": {"algorithms": ["kmeans"], "k_values": [2, 3], "seeds": [42]},
+    }
+
+    best, leaderboard = flow_mzd.gridsearch.fn(table, scores, cfg)
+
+    assert all(row["outcome_name"] == "nitrate" for row in leaderboard)
+    assert all({"vr", "anova_p", "asc", "ch_score"}.issubset(row) for row in leaderboard)
+    assert best["metrics"] == max(
+        leaderboard, key=lambda row: (row["vr"], row["asc"])
+    )
+
+
+def test_explicit_outcome_is_never_added_to_component_predictors(monkeypatch):
+    captured = {}
+    table = pd.DataFrame(
+        {
+            "predictor_a": [1.0, 2.0, 3.0],
+            "predictor_b": [3.0, 2.0, 1.0],
+            "nitrate": [100.0, 200.0, 300.0],
+        }
+    )
+    cfg = {
+        "project": {
+            "soil": {
+                "variables": ["predictor_a", "predictor_b"],
+                "required_variables": [],
+            },
+            "outcome": "nitrate",
+        },
+        "spatial_pca": {"n_components": 2, "use_r_multispati": False},
+        "weights": {"k": 1},
+    }
+    monkeypatch.setattr(flow_mzd, "knn_weights", lambda frame, k: "weights")
+
+    def capture_components(matrix, weights, n_components, use_r):
+        captured["columns"] = matrix.columns.tolist()
+        return pd.DataFrame(np.zeros((len(matrix), n_components))), False
+
+    monkeypatch.setattr(flow_mzd, "multispati_components", capture_components)
+
+    flow_mzd.components_from_grid.fn(table, cfg)
+
+    assert captured["columns"] == ["predictor_a", "predictor_b"]
+    assert "nitrate" not in captured["columns"]
 
 
 def test_vector_flow_result_records_decomposition_provenance(monkeypatch):

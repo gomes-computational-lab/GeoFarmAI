@@ -13,10 +13,13 @@ from core.export import save_package, zones_from_points
 from core.raster_pipeline import (
     build_arcgis_grid,
     ordinary_krige,
+    raster_gridsearch,
     spatial_pca_from_stack,
     write_raster,
+    write_cluster_outputs,
     zones_from_label_raster,
 )
+from scipy.sparse import csr_matrix
 
 
 def test_arcgis_grid_honors_explicit_bounds():
@@ -120,6 +123,77 @@ def test_raster_pca_path_preserves_pairwise_component_geometry(monkeypatch):
     assert used_multispaeti is False
     assert "PCA fallback summary" in summary
     assert connectivity.shape == (9, 9)
+
+
+def test_raster_gridsearch_and_cluster_map_work_without_outcome(
+    separated_matrix, tmp_path
+):
+    valid = np.ones(9, dtype=bool)
+    connectivity = csr_matrix((9, 9), dtype=float)
+    cfg = {
+        "clustering": {"algorithms": ["kmeans"], "k_values": [2, 3], "seeds": [42]},
+        "raster": {"parallel_gridsearch": False, "silhouette_sample_size": 100},
+    }
+
+    best, leaderboard, selections = raster_gridsearch(
+        separated_matrix,
+        None,
+        valid,
+        connectivity,
+        cfg,
+    )
+
+    assert best is not None
+    assert all({"asc", "ch_score"}.issubset(row) for row in leaderboard)
+    assert all("vr" not in row and "anova_p" not in row for row in leaderboard)
+    assert "internal_metrics" in selections
+
+    profile = {
+        "driver": "GTiff",
+        "height": 3,
+        "width": 3,
+        "count": 1,
+        "dtype": "float64",
+        "crs": "EPSG:32612",
+        "transform": from_origin(0.0, 30.0, 10.0, 10.0),
+        "nodata": np.nan,
+    }
+    paths = write_cluster_outputs(
+        selections,
+        leaderboard,
+        valid,
+        (3, 3),
+        profile,
+        tmp_path / "clusters",
+        tmp_path / "preview",
+    )
+
+    assert paths
+    assert (tmp_path / "clusters" / "best_clusters.tif").is_file()
+
+
+def test_raster_gridsearch_uses_arbitrary_named_outcome(separated_matrix):
+    valid = np.ones(9, dtype=bool)
+    connectivity = csr_matrix((9, 9), dtype=float)
+    nitrate = np.repeat([1.0, 10.0, 20.0], 3).reshape(3, 3)
+    cfg = {
+        "clustering": {"algorithms": ["kmeans"], "k_values": [2, 3], "seeds": [42]},
+        "raster": {"parallel_gridsearch": False, "silhouette_sample_size": 100},
+    }
+
+    best, leaderboard, selections = raster_gridsearch(
+        separated_matrix,
+        nitrate,
+        valid,
+        connectivity,
+        cfg,
+        outcome_name="nitrate",
+    )
+
+    assert best is not None
+    assert all(row["outcome_name"] == "nitrate" for row in leaderboard)
+    assert all({"vr", "anova_p"}.issubset(row) for row in leaderboard)
+    assert "outcome_variance" in selections
 
 
 @pytest.mark.optional_scientific

@@ -50,13 +50,13 @@ ROLE_PATTERNS: Dict[str, str] = {
 }
 
 VISUAL_CAPTIONS: Dict[str, str] = {
-    "yield_variance_cluster_map": "Yield-variance-selected management-zone map. This map is selected using yield variance reduction.",
-    "recommended_cluster_map": "Recommended yield-variance management-zone map for the field.",
+    "yield_variance_cluster_map": "Outcome-variance-selected management-zone map. This map is selected using outcome variance reduction.",
+    "recommended_cluster_map": "Recommended outcome-variance management-zone map for the field.",
     "ch_cluster_map": "Calinski-Harabasz-selected management-zone map. This map is selected using feature-space separation.",
-    "vr_comparison": "Comparison of candidate models by yield variance reduction.",
+    "vr_comparison": "Comparison of candidate models by outcome variance reduction.",
     "ch_score_comparison": "Comparison of candidate models by Calinski-Harabasz score.",
     "asc_comparison": "Comparison of candidate models by average silhouette coefficient.",
-    "anova_comparison": "Comparison of candidate models by yield ANOVA p-value.",
+    "anova_comparison": "Comparison of candidate models by outcome ANOVA p-value.",
     "cluster_map_comparison": "Visual comparison of the yield-variance-selected map and the Calinski-Harabasz-selected map.",
 }
 
@@ -510,8 +510,8 @@ def _classify_preview_file(path: Path, output_dir: Path) -> VisualCatalogItem:
             id="clusters_best",
             path=relative,
             filename=filename,
-            title="Best cluster map by yield variance reduction",
-            description="Cluster map selected using yield variance reduction.",
+            title="Best cluster map by outcome variance reduction",
+            description="Cluster map selected using outcome variance reduction.",
             category="cluster_map",
             visual_type="selected_map",
             role="yield_variance_cluster_map",
@@ -704,10 +704,10 @@ def _metric_from_filename_token(token: str) -> Optional[str]:
 
 def _metric_title(metric: str) -> str:
     return {
-        "vr": "yield variance reduction",
+        "vr": "outcome variance reduction",
         "ch_score": "Calinski-Harabasz score",
         "asc": "average silhouette coefficient",
-        "anova_p": "yield ANOVA p-value",
+        "anova_p": "outcome ANOVA p-value",
     }.get(metric, metric.replace("_", " "))
 
 

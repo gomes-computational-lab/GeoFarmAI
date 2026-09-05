@@ -33,8 +33,7 @@ def _buffer_mean(points: gpd.GeoDataFrame, value_column: str,
     return joined.groupby("index_right")[value_column].mean().reindex(targets.index)
 
 
-def populate_grid(soil_utm: gpd.GeoDataFrame, yield_utm: gpd.GeoDataFrame, grid: gpd.GeoDataFrame,
-                  soil_vars: list[str], method="idw", buffer_m=15):
+def _validate_method(method: str) -> None:
     supported_methods = {"idw", "nearest", "buffer_mean"}
     if method not in supported_methods:
         if method == "kriging":
@@ -48,23 +47,74 @@ def populate_grid(soil_utm: gpd.GeoDataFrame, yield_utm: gpd.GeoDataFrame, grid:
             "Choose one of: idw, nearest, buffer_mean."
         )
 
+def reconcile_columns(
+    points: gpd.GeoDataFrame,
+    grid: gpd.GeoDataFrame,
+    variables: list[str],
+    method="idw",
+    buffer_m=15,
+):
+    """Apply the existing reconciliation algorithm to arbitrary variables."""
+
+    _validate_method(method)
     out = grid.copy()
-    # soil variables
-    for v in soil_vars:
+    for v in variables:
         if method == "nearest":
-            joined = gpd.sjoin_nearest(out, soil_utm[[v, "geometry"]], how="left", distance_col=f"{v}_dist")
+            joined = gpd.sjoin_nearest(out, points[[v, "geometry"]], how="left", distance_col=f"{v}_dist")
             out[v] = joined[v].values
         elif method == "buffer_mean":
-            out[v] = _buffer_mean(soil_utm, v, out, buffer_m)
+            out[v] = _buffer_mean(points, v, out, buffer_m)
         else:  # IDW default
-            out[v] = idw(soil_utm, soil_utm[v].values, out)
-    # yield
-    if "yield" in yield_utm.columns:
-        if method == "nearest":
-            joined = gpd.sjoin_nearest(out, yield_utm[["yield","geometry"]], how="left", distance_col="yield_dist")
-            out["yield"] = joined["yield"].values
-        elif method == "buffer_mean":
-            out["yield"] = _buffer_mean(yield_utm, "yield", out, buffer_m)
-        else:
-            out["yield"] = idw(yield_utm, yield_utm["yield"].values, out)
+            out[v] = idw(points, points[v].values, out)
     return out
+
+
+def populate_analysis_grid(
+    predictor_points: gpd.GeoDataFrame,
+    grid: gpd.GeoDataFrame,
+    predictor_variables: list[str],
+    *,
+    outcome_points: gpd.GeoDataFrame | None = None,
+    outcome_name: str | None = None,
+    method="idw",
+    buffer_m=15,
+):
+    """Reconcile predictors and an optional explicit outcome to one grid."""
+
+    out = reconcile_columns(
+        predictor_points,
+        grid,
+        predictor_variables,
+        method=method,
+        buffer_m=buffer_m,
+    )
+    if outcome_name is None:
+        return out
+    source = outcome_points if outcome_points is not None else predictor_points
+    if outcome_name not in source.columns:
+        raise ValueError(f"Configured outcome column {outcome_name!r} is missing.")
+    reconciled_outcome = reconcile_columns(
+        source,
+        grid,
+        [outcome_name],
+        method=method,
+        buffer_m=buffer_m,
+    )
+    out[outcome_name] = reconciled_outcome[outcome_name].values
+    return out
+
+
+def populate_grid(soil_utm: gpd.GeoDataFrame, yield_utm: gpd.GeoDataFrame, grid: gpd.GeoDataFrame,
+                  soil_vars: list[str], method="idw", buffer_m=15):
+    """Compatibility wrapper for the historical soil/yield API."""
+
+    outcome = yield_utm if "yield" in yield_utm.columns else None
+    return populate_analysis_grid(
+        soil_utm,
+        grid,
+        soil_vars,
+        outcome_points=outcome,
+        outcome_name="yield" if outcome is not None else None,
+        method=method,
+        buffer_m=buffer_m,
+    )

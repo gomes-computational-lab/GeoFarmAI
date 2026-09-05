@@ -27,15 +27,32 @@ def make_grid(bounds, cell):
             polys.append(box(x0, y0, x0 + cell, y0 + cell))
     return gpd.GeoDataFrame(geometry=polys, crs="EPSG:32600")  # will overwrite crs from a template later
 
-def build_field_grid(soil_utm: gpd.GeoDataFrame, yield_utm: gpd.GeoDataFrame, cell_m: float):
-    field_bounds = soil_utm.total_bounds
-    field_bounds = np.array([
-        min(field_bounds[0], yield_utm.total_bounds[0]),
-        min(field_bounds[1], yield_utm.total_bounds[1]),
-        max(field_bounds[2], yield_utm.total_bounds[2]),
-        max(field_bounds[3], yield_utm.total_bounds[3]),
-    ])
+def build_analysis_grid(
+    predictor_points: gpd.GeoDataFrame,
+    cell_m: float,
+    outcome_points: gpd.GeoDataFrame | None = None,
+):
+    """Build the existing envelope grid with an optional outcome support."""
+
+    field_bounds = predictor_points.total_bounds
+    if outcome_points is not None and not outcome_points.empty:
+        field_bounds = np.array([
+            min(field_bounds[0], outcome_points.total_bounds[0]),
+            min(field_bounds[1], outcome_points.total_bounds[1]),
+            max(field_bounds[2], outcome_points.total_bounds[2]),
+            max(field_bounds[3], outcome_points.total_bounds[3]),
+        ])
     grid = make_grid(field_bounds, cell_m)
-    grid.set_crs(soil_utm.crs, inplace=True, allow_override=True)
+    grid.set_crs(predictor_points.crs, inplace=True, allow_override=True)
     grid["cell_id"] = np.arange(len(grid))
     return grid
+
+
+def build_field_grid(
+    soil_utm: gpd.GeoDataFrame,
+    yield_utm: gpd.GeoDataFrame,
+    cell_m: float,
+):
+    """Compatibility wrapper for the historical soil/yield API."""
+
+    return build_analysis_grid(soil_utm, cell_m, outcome_points=yield_utm)

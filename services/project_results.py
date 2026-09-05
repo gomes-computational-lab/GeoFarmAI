@@ -18,10 +18,10 @@ METRIC_DIRECTIONS: Dict[str, bool] = {
 }
 
 METRIC_OBJECTIVES: Dict[str, str] = {
-    "vr": "Best yield variance reduction",
+    "vr": "Best outcome variance reduction",
     "ch_score": "Best feature-space separation",
     "asc": "Best average silhouette coefficient",
-    "anova_p": "Strongest yield-difference evidence",
+    "anova_p": "Strongest outcome-difference evidence",
 }
 
 

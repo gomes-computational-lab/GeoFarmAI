@@ -22,8 +22,8 @@ from scipy.optimize import linear_sum_assignment
 from scipy.spatial.distance import cdist
 
 from core.crs import to_utm_auto
-from core.grid import build_field_grid, choose_cell_size
-from core.reconcile import populate_grid
+from core.grid import build_analysis_grid, choose_cell_size
+from core.reconcile import populate_analysis_grid
 from geofarmai.data.dataset import FieldDataset
 from geofarmai.data.schema import VariableRole, VariableSpec
 from geofarmai.data.source import DataSource
@@ -299,7 +299,7 @@ def harmonize(
                 combined_predictors, min_cell=min_cell_size, max_cell=max_cell_size
             )
         )
-        grid = build_field_grid(combined_predictors, combined_predictors, resolved_cell_size)
+        grid = build_analysis_grid(combined_predictors, resolved_cell_size)
         if grid.empty:
             raise HarmonizationError(
                 "Grid harmonization produced no cells; check source extent and cell_size."
@@ -548,13 +548,9 @@ def _reconcile_variable(
         geometry=gpd.GeoSeries(support.array, crs=support.crs),
         crs=support.crs,
     )
-    empty_outcome = gpd.GeoDataFrame(
-        geometry=gpd.GeoSeries([], dtype="geometry", crs=support.crs), crs=support.crs
-    )
     try:
-        reconciled = populate_grid(
+        reconciled = populate_analysis_grid(
             samples,
-            empty_outcome,
             targets,
             [value_column],
             method=method,

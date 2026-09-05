@@ -21,6 +21,7 @@ from .exceptions import (
     DataSourceError,
     GeoFarmAIError,
     HarmonizationError,
+    OutcomeConfigurationError,
     RMultispatiUnavailableError,
     SchemaValidationError,
 )
@@ -36,6 +37,7 @@ __all__ = [
     "HarmonizationError",
     "HarmonizationWarning",
     "HarmonizedFieldDataset",
+    "OutcomeConfigurationError",
     "RMultispatiUnavailableError",
     "SchemaInspection",
     "SchemaValidationError",
