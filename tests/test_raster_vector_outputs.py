@@ -6,6 +6,7 @@ import pytest
 gpd = pytest.importorskip("geopandas")
 rasterio = pytest.importorskip("rasterio")
 from rasterio.transform import from_origin
+from shapely import union_all
 from shapely.geometry import Point
 
 from core.export import save_package, zones_from_points
@@ -56,7 +57,7 @@ def test_raster_zone_polygonization_is_label_permutation_invariant():
 
     assert len(first) == len(second) == 2
     np.testing.assert_allclose(sorted(first.area), sorted(second.area))
-    assert first.geometry.union_all().equals(second.geometry.union_all())
+    assert union_all(first.geometry.array).equals(union_all(second.geometry.array))
 
 
 def test_vector_zone_and_geopackage_outputs(tmp_path):
