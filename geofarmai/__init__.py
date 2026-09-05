@@ -54,6 +54,7 @@ __all__ = [
     "VariableProvenance",
     "VariableSpec",
     "coordinate_candidates",
+    "delineate_zones",
     "harmonize",
     "inspect_schema",
     "run_pipeline",
@@ -74,8 +75,11 @@ def __getattr__(name):
         from .result import CandidateSolution, GeoFarmResult
 
         return {"CandidateSolution": CandidateSolution, "GeoFarmResult": GeoFarmResult}[name]
-    if name == "run_pipeline":
-        from .api import run_pipeline
+    if name in {"delineate_zones", "run_pipeline"}:
+        from .api import delineate_zones, run_pipeline
 
-        return run_pipeline
+        return {
+            "delineate_zones": delineate_zones,
+            "run_pipeline": run_pipeline,
+        }[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
