@@ -1,0 +1,21 @@
+sources:
+  - id: soil
+    path: ../data/example_soil.csv
+    coordinates: {x: x, y: y, crs: EPSG:32615}
+    variables:
+      EC: {role: predictor, domain: soil}
+      moisture: {role: predictor, domain: soil}
+  - id: terrain
+    path: ../data/example_terrain.csv
+    coordinates: {x: x, y: y, crs: EPSG:32615}
+    variables:
+      elevation: {role: predictor, domain: terrain}
+
+analysis:
+  harmonization: {strategy: auto, resolution: auto}
+  decomposition: {method: pca, n_components: 2}
+  clustering:
+    methods: [kmeans, agglomerative]
+    k: {min: 2, max: 3}
+  selection: {metric: calinski_harabasz}
+  random_state: 42

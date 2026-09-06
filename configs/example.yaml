@@ -1,0 +1,40 @@
+metadata:
+  description: Synthetic, portable GeoFarmAI configuration.
+
+sources:
+  - id: field
+    path: ../data/example_field.csv
+    coordinates:
+      x: x
+      y: y
+      crs: EPSG:32615
+    variables:
+      EC:
+        role: predictor
+        domain: soil
+      moisture:
+        role: predictor
+        domain: soil
+      elevation:
+        role: predictor
+        domain: terrain
+      yield:
+        role: outcome
+        domain: crop
+
+analysis:
+  harmonization:
+    strategy: auto
+    resolution: auto
+    method: idw
+  decomposition:
+    method: pca
+    n_components: 2
+  clustering:
+    methods: [kmeans, gmm]
+    k:
+      min: 2
+      max: 3
+  selection:
+    metric: silhouette
+  random_state: 42

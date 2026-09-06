@@ -1,0 +1,17 @@
+sources:
+  - id: field
+    path: ../data/example_field.csv
+    coordinates: {x: x, y: y, crs: EPSG:32615}
+    variables:
+      EC: {role: predictor, domain: soil}
+      moisture: {role: predictor, domain: soil}
+      elevation: {role: predictor, domain: terrain}
+
+analysis:
+  harmonization: {strategy: direct, resolution: auto}
+  decomposition: {method: pca, n_components: 2}
+  clustering:
+    methods: [kmeans, gmm]
+    k: 2
+  selection: null
+  random_state: 42

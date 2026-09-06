@@ -1,0 +1,18 @@
+sources:
+  - id: field
+    path: ../data/example_field.csv
+    coordinates: {x: x, y: y, crs: EPSG:32615}
+    variables:
+      EC: {role: predictor, domain: soil}
+      moisture: {role: predictor, domain: soil}
+      elevation: {role: predictor, domain: terrain}
+      nitrate: {role: outcome, domain: nutrient}
+
+analysis:
+  harmonization: {strategy: auto, resolution: auto}
+  decomposition: {method: none}
+  clustering:
+    methods: [kmeans]
+    k: {min: 2, max: 3}
+  selection: {metric: variance_reduction, outcome: nitrate}
+  random_state: 42

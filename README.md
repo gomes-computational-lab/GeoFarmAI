@@ -52,6 +52,70 @@ is declared selected. Outcome columns never enter the predictor matrix.
 `run_pipeline(...)` remains available as a deprecated compatibility wrapper.
 New code should use `GeoFarmModel.fit(...)`.
 
+## Source-based YAML configuration
+
+The canonical YAML format declares every source, coordinate system, and
+scientific variable role explicitly. Source IDs are required and stable;
+relative paths are resolved from the YAML file rather than the shell's current
+directory. Variable names do not imply roles: a column named `yield` or
+`nitrate` participates as an outcome only when its role says so.
+
+```yaml
+sources:
+  - id: field
+    path: ../data/example_field.csv
+    coordinates: {x: x, y: y, crs: EPSG:32615}
+    variables:
+      EC: {role: predictor, domain: soil}
+      moisture: {role: predictor, domain: soil}
+      yield: {role: outcome, domain: crop}
+
+analysis:
+  harmonization: {strategy: auto, resolution: auto, method: idw}
+  decomposition: {method: pca, n_components: 2}
+  clustering:
+    methods: [kmeans, gmm]
+    k: {min: 2, max: 4}  # max is inclusive
+  selection: {metric: variance_reduction, outcome: yield}
+  random_state: 42
+```
+
+Load and inspect the canonical objects, or execute the same
+`GeoFarmModel.fit()` path used by the Python API:
+
+```python
+from geofarmai import load_config, run_from_config
+
+configuration = load_config("configs/example.yaml")
+data, model = configuration.build()
+result = model.fit(data)
+
+# Equivalent one-call form; this is not a separate scientific pipeline.
+result = run_from_config("configs/example.yaml")
+```
+
+Use an integer for fixed `k`, or `{min, max}` for an inclusive candidate
+range. Selection supports `silhouette`, `calinski_harabasz`, and
+`variance_reduction`; use `selection: null` to retain all candidates without
+selecting one. Variance-reduction selection requires an explicitly declared
+outcome, and configurations with several outcomes must identify the selection
+outcome. All declared outcomes remain available for validation.
+
+The new YAML loader supports CSV sources. DataFrame and geometry-backed inputs
+remain available through the Python API. The isolated `load_legacy_config()`
+adapter translates historical `project.soil`, `project.outcome`, and
+`project.yield` declarations and keeps the old yield assumption out of the
+canonical loader. It does not synthesize identifiers; the unchanged legacy
+pipeline still performs its
+historical `sample_id` synthesis where needed. Because `GeoFarmModel` has one
+`random_state`, the adapter uses the first configured legacy seed and records
+all configured seeds plus this policy in its metadata. Use the unchanged legacy
+experiment pipeline when every historical seed must be executed.
+
+Runnable synthetic examples are provided in `configs/example.yaml` and the
+`configs/example_*.yaml` files. They require no network, R installation, LLM,
+or external service.
+
 ### Convenience API
 
 `delineate_zones()` is a thin shortcut for `GeoFarmModel(...).fit(data)`. It
@@ -98,8 +162,10 @@ result = delineate_zones(
 
 ## Repository layout
 
-- `configs/project.yaml` - Main project configuration. Defines input data paths, coordinate columns, soil/yield variables, grid settings, clustering settings, experiment sweeps, and output directory.
-- `data/` - Input soil and yield CSV files referenced by the config.
+- `configs/example.yaml` - Portable source-based configuration for the canonical API.
+- `configs/project.yaml` - Historical application/pipeline configuration supported by the isolated legacy adapter.
+- `data/example_*.csv` - Small synthetic inputs used by the canonical examples.
+- `data/soil.csv`, `data/yield.csv` - Existing project inputs used by the historical configuration.
 - `core/` - Core spatial and modeling utilities.
 - `jobs/flow_mzd.py` - Baseline management zone design pipeline.
 - `jobs/run_experiments.py` - Batch experiment runner for parameter sweeps.
@@ -223,9 +289,11 @@ export AGGPT_WEB_LOOKUP_URL=https://your-lookup-service.example/search
 
 If these settings are not enabled, the assistant returns a clear fallback such as `That question appears to need current external information, but live web lookup is not enabled in this app` instead of fabricating an answer. Stable general questions still go to the regular LLM. Local date/time questions are handled deterministically and do not require live lookup.
 
-## Configuration
+## Legacy application configuration
 
-The main configuration is `configs/project.yaml`. Key sections are:
+The following section documents the unchanged historical pipeline rather than
+the canonical source-based loader above. Its main configuration is
+`configs/project.yaml`. Key sections are:
 
 - `project`: Project name, CRS, soil CSV, yield CSV, coordinate fields, and variable names.
 - `grid`: Cell-size rules and interpolation method. Current method is `idw`.

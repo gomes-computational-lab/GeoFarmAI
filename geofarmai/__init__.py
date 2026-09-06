@@ -17,6 +17,7 @@ from .data import (
     inspect_schema,
 )
 from .exceptions import (
+    ConfigurationError,
     DataModelError,
     DataSourceError,
     GeoFarmAIError,
@@ -32,6 +33,7 @@ __all__ = [
     "CoordinateCandidates",
     "CoordinateSpec",
     "CandidateSolution",
+    "ConfigurationError",
     "DataModelError",
     "DataSource",
     "DataSourceError",
@@ -58,6 +60,12 @@ __all__ = [
     "harmonize",
     "inspect_schema",
     "run_pipeline",
+    "load_config",
+    "load_legacy_config",
+    "run_from_config",
+    "AnalysisConfiguration",
+    "GeoFarmConfiguration",
+    "SourceConfiguration",
     "__version__",
 ]
 
@@ -81,5 +89,30 @@ def __getattr__(name):
         return {
             "delineate_zones": delineate_zones,
             "run_pipeline": run_pipeline,
+        }[name]
+    if name in {
+        "AnalysisConfiguration",
+        "GeoFarmConfiguration",
+        "SourceConfiguration",
+        "load_config",
+        "load_legacy_config",
+        "run_from_config",
+    }:
+        from .config import (
+            AnalysisConfiguration,
+            GeoFarmConfiguration,
+            SourceConfiguration,
+            load_config,
+            load_legacy_config,
+            run_from_config,
+        )
+
+        return {
+            "AnalysisConfiguration": AnalysisConfiguration,
+            "GeoFarmConfiguration": GeoFarmConfiguration,
+            "SourceConfiguration": SourceConfiguration,
+            "load_config": load_config,
+            "load_legacy_config": load_legacy_config,
+            "run_from_config": run_from_config,
         }[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

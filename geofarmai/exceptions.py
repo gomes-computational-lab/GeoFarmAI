@@ -39,3 +39,7 @@ class ModelConfigurationError(GeoFarmAIError, ValueError):
 
 class ModelNotFittedError(GeoFarmAIError, RuntimeError):
     """Raised when fitted GeoFarmModel state is requested before fit()."""
+
+
+class ConfigurationError(GeoFarmAIError, ValueError):
+    """Raised when declarative GeoFarmAI configuration is invalid."""

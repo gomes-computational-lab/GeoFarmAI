@@ -1,0 +1,21 @@
+sources:
+  - id: observations
+    path: ../data/example_field.csv
+    coordinates:
+      x: x
+      y: y
+      crs: EPSG:32615
+    variables:
+      EC: {role: predictor, domain: soil, units: dS/m}
+      moisture: {role: predictor, domain: soil, units: percent}
+      elevation: {role: predictor, domain: terrain, units: m}
+      yield: {role: outcome, domain: crop}
+
+analysis:
+  harmonization: {strategy: auto, resolution: auto}
+  decomposition: {method: pca, n_components: 2}
+  clustering:
+    methods: [kmeans]
+    k: 2
+  selection: {metric: variance_reduction, outcome: yield}
+  random_state: 42
