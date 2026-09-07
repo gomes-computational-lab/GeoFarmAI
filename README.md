@@ -437,23 +437,17 @@ functionality are not GeoFarmAI runtime requirements.
 
 ## Research and Software Provenance
 
-GeoFarmAI is the scientific and geospatial analysis framework underlying the
-broader MZ-GPT research effort; it is not itself the MZ-GPT agentic
-application. The relationship is:
+GeoFarmAI developed from an experimental scientific pipeline into a
+generalized, reusable scientific and geospatial analysis library:
 
 ```text
 experimental scientific pipeline
     -> generalized GeoFarmAI library
-    -> ag-gpt agentic application using GeoFarmAI
 ```
 
-The historical MZ-GPT IDR described the scientific workflow and a planned
-agentic AI layer, identifying agentic capability as a core innovation and an
-eventual open-source platform as an objective. That history does not apply a
-license to GeoFarmAI or determine software ownership. Results used in the
-historical poster or manuscript were produced with the earlier experimental
-pipeline; this repository does not claim that GeoFarmAI v0.1.0 generated those
-results.
+Results used in the historical poster or manuscript were produced with the
+earlier experimental pipeline. This repository does not claim that GeoFarmAI
+v0.1.0 generated those results.
 
 ## Development Status, Citation, and License
 
@@ -475,7 +469,7 @@ citation still require human confirmation.
 
 ```yaml
 Proposed license: BSD-3-Clause
-Status: pending confirmation of licensing/IP requirements related to the MZ-GPT IDR.
+Status: pending confirmation of licensing/IP requirements.
 ```
 
 No license has yet been applied or granted, so do not redistribute the package
