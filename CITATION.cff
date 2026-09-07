@@ -1,0 +1,18 @@
+cff-version: "1.2.0"
+message: >-
+  If you use GeoFarmAI in research, please cite the software using the
+  metadata in this file.
+title: GeoFarmAI
+type: software
+version: "0.1.0"
+repository-code: "https://github.com/gomes-computational-lab/GeoFarmAI"
+authors:
+  - given-names: Papia
+    family-names: Rozario
+    affiliation: "University of Wisconsin-Eau Claire, Geography and Anthropology"
+  - given-names: Rahul
+    family-names: Gomes
+    affiliation: "University of Wisconsin-Eau Claire, Computer Science"
+  - given-names: Patricia
+    family-names: Alegria
+    affiliation: "University of Maryland, Mathematics and Social Data Science"

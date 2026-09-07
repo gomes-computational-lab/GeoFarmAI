@@ -445,6 +445,13 @@ python -m pytest -q
 python -m build
 ```
 
-Final citation metadata, author information, repository metadata, and license
-selection require human review. Do not redistribute the package until its
-license status has been resolved.
+Researchers using GeoFarmAI should cite the software using the metadata in
+[`CITATION.cff`](CITATION.cff). The broader software, scientific, experimental,
+funding, and provenance record is maintained in
+[`CONTRIBUTORS.md`](CONTRIBUTORS.md). Software attribution is distinct from
+manuscript authorship and funding.
+
+ORCID identifiers, grant identifiers, and the eventual manuscript citation
+still require human confirmation. **License: pending WiSys/IP review.** No
+open-source license has been selected or granted, so do not redistribute the
+package until its license status has been resolved.
