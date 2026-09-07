@@ -435,6 +435,26 @@ The separate `ag-gpt` repository is one such application consumer; the
 dependency direction is `ag-gpt → GeoFarmAI`. Application and conversational
 functionality are not GeoFarmAI runtime requirements.
 
+## Research and Software Provenance
+
+GeoFarmAI is the scientific and geospatial analysis framework underlying the
+broader MZ-GPT research effort; it is not itself the MZ-GPT agentic
+application. The relationship is:
+
+```text
+experimental scientific pipeline
+    -> generalized GeoFarmAI library
+    -> ag-gpt agentic application using GeoFarmAI
+```
+
+The historical MZ-GPT IDR described the scientific workflow and a planned
+agentic AI layer, identifying agentic capability as a core innovation and an
+eventual open-source platform as an objective. That history does not apply a
+license to GeoFarmAI or determine software ownership. Results used in the
+historical poster or manuscript were produced with the earlier experimental
+pipeline; this repository does not claim that GeoFarmAI v0.1.0 generated those
+results.
+
 ## Development Status, Citation, and License
 
 GeoFarmAI is currently a pre-release library at version `0.1.0`. The default
@@ -449,9 +469,16 @@ Researchers using GeoFarmAI should cite the software using the metadata in
 [`CITATION.cff`](CITATION.cff). The broader software, scientific, experimental,
 funding, and provenance record is maintained in
 [`CONTRIBUTORS.md`](CONTRIBUTORS.md). Software attribution is distinct from
-manuscript authorship and funding.
+manuscript authorship and funding. An associated research publication is in
+preparation; no manuscript DOI or publication citation is currently claimed.
 
-ORCID identifiers, grant identifiers, and the eventual manuscript citation
-still require human confirmation. **License: pending WiSys/IP review.** No
-open-source license has been selected or granted, so do not redistribute the
-package until its license status has been resolved.
+ORCID identifiers, remaining grant metadata, and the eventual manuscript
+citation still require human confirmation.
+
+```yaml
+Proposed license: BSD-3-Clause
+Status: pending confirmation of licensing/IP requirements related to the MZ-GPT IDR.
+```
+
+No license has yet been applied or granted, so do not redistribute the package
+until its license status has been resolved.
