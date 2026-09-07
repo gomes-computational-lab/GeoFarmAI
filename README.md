@@ -466,9 +466,7 @@ python -m build
 ```
 
 Researchers using GeoFarmAI should cite the software using the metadata in
-[`CITATION.cff`](CITATION.cff). The broader software, scientific, experimental,
-funding, and provenance record is maintained in
-[`CONTRIBUTORS.md`](CONTRIBUTORS.md). Software attribution is distinct from
+[`CITATION.cff`](CITATION.cff). Software attribution is distinct from
 manuscript authorship and funding. An associated research publication is in
 preparation; no manuscript DOI or publication citation is currently claimed.
 
