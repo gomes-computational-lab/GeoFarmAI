@@ -1,0 +1,22 @@
+sources:
+  - id: soil
+    path: ../data/nitrate_soil.csv
+    coordinates: {x: x, y: y, crs: EPSG:32615}
+    variables:
+      EC: {role: predictor, domain: soil, units: dS/m}
+      CEC: {role: predictor, domain: soil, units: "cmol(+)/kg"}
+      organic_matter: {role: predictor, domain: soil, units: percent}
+  - id: nitrate_samples
+    path: ../data/nitrate_outcome.csv
+    coordinates: {x: x, y: y, crs: EPSG:32615}
+    variables:
+      nitrate: {role: outcome, domain: nutrient, units: mg/kg}
+
+analysis:
+  harmonization: {strategy: auto, resolution: auto, method: idw}
+  decomposition: {method: pca, n_components: 2}
+  clustering:
+    methods: [kmeans]
+    k: {min: 2, max: 3}
+  selection: {metric: variance_reduction, outcome: nitrate}
+  random_state: 42

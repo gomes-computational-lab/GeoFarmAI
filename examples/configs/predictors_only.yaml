@@ -1,0 +1,21 @@
+sources:
+  - id: soil
+    path: ../data/predictors_only_soil.csv
+    coordinates: {x: x, y: y, crs: EPSG:32615}
+    variables:
+      EC: {role: predictor, domain: soil, units: dS/m}
+      moisture: {role: predictor, domain: soil, units: percent}
+  - id: terrain
+    path: ../data/predictors_only_terrain.csv
+    coordinates: {x: x, y: y, crs: EPSG:32615}
+    variables:
+      elevation: {role: predictor, domain: terrain, units: m}
+
+analysis:
+  harmonization: {strategy: auto, resolution: 10, method: idw}
+  decomposition: {method: pca, n_components: 2}
+  clustering:
+    methods: [kmeans]
+    k: {min: 2, max: 3}
+  selection: null
+  random_state: 42

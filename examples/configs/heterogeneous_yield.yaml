@@ -1,0 +1,27 @@
+sources:
+  - id: soil
+    path: ../data/heterogeneous_soil.csv
+    coordinates: {x: x, y: y, crs: EPSG:32615}
+    variables:
+      EC: {role: predictor, domain: soil, units: dS/m}
+      moisture: {role: predictor, domain: soil, units: percent}
+  - id: terrain
+    path: ../data/heterogeneous_terrain.csv
+    coordinates: {x: x, y: y, crs: EPSG:32615}
+    variables:
+      elevation: {role: predictor, domain: terrain, units: m}
+      slope: {role: predictor, domain: terrain, units: percent}
+  - id: harvest
+    path: ../data/heterogeneous_yield.csv
+    coordinates: {x: x, y: y, crs: EPSG:32615}
+    variables:
+      yield: {role: outcome, domain: crop, units: Mg/ha}
+
+analysis:
+  harmonization: {strategy: auto, resolution: 10, method: idw}
+  decomposition: {method: pca, n_components: 2}
+  clustering:
+    methods: [kmeans]
+    k: {min: 2, max: 3}
+  selection: {metric: variance_reduction, outcome: yield}
+  random_state: 42
