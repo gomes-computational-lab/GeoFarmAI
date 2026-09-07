@@ -43,3 +43,7 @@ class ModelNotFittedError(GeoFarmAIError, RuntimeError):
 
 class ConfigurationError(GeoFarmAIError, ValueError):
     """Raised when declarative GeoFarmAI configuration is invalid."""
+
+
+class OptionalDependencyError(GeoFarmAIError, ImportError):
+    """Raised when an explicitly requested optional feature is unavailable."""

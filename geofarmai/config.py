@@ -234,15 +234,16 @@ def load_legacy_config(path: str | Path) -> GeoFarmConfiguration:
         metadata={
             "legacy_adapter": True,
             "legacy_identifier_synthesis": (
-                "Not applied by the canonical adapter; the unchanged legacy pipeline "
-                "still synthesizes sample_id when required."
+                "Not applied by the canonical adapter; callers must provide explicit "
+                "identifiers or prepare legacy data before canonical analysis."
             ),
             "legacy_configured_random_states": tuple(
                 document.get("clustering", {}).get("seeds", [42])
             ),
             "legacy_random_state_policy": (
-                "GeoFarmModel uses the first configured legacy seed. Use the unchanged "
-                "legacy experiment pipeline to execute every configured seed."
+                "GeoFarmModel uses the first configured legacy seed. Use the configured "
+                "seed list to construct explicit GeoFarmModel fits when every configured "
+                "seed must be executed."
             ),
         },
         legacy=True,

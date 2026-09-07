@@ -31,12 +31,12 @@ def run_pipeline(
     experiment: str | None = None,
     metadata: Mapping[str, Any] | None = None,
     **model_options: Any,
-) -> GeoFarmResult | tuple[dict[str, Any], list[dict[str, Any]]]:
-    """Compatibility wrapper around legacy and canonical analysis entry points.
+) -> GeoFarmResult:
+    """Deprecated scientific wrapper around :class:`GeoFarmModel`.
 
-    New code should construct :class:`GeoFarmModel` directly. A legacy config
-    mapping retains the existing ``jobs.run_experiments.run_pipeline`` return
-    contract through a lazy adapter.
+    New code should construct :class:`GeoFarmModel` directly. Historical
+    mapping-based workflow orchestration has moved to the ag-gpt application;
+    YAML users should call :func:`geofarmai.run_from_config` instead.
     """
 
     warnings.warn(
@@ -46,16 +46,10 @@ def run_pipeline(
         stacklevel=2,
     )
     if isinstance(data_or_config, Mapping):
-        if model_options:
-            raise ModelConfigurationError(
-                "GeoFarmModel options cannot be combined with a legacy config mapping."
-            )
-        from jobs.run_experiments import run_pipeline as legacy_run_pipeline
-
-        return legacy_run_pipeline(
-            dict(data_or_config),
-            experiment,
-            dict(metadata or {}),
+        raise ModelConfigurationError(
+            "Mapping-based run_pipeline() workflow orchestration was removed from "
+            "GeoFarmAI. Use run_from_config(path, legacy=True) for a historical YAML "
+            "file, or GeoFarmModel.fit(FieldDataset) for canonical analysis."
         )
 
     if experiment is not None or metadata is not None:

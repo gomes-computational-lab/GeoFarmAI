@@ -10,49 +10,6 @@ from shapely.geometry import Point
 
 from core.crs import to_utm_auto, utm_zone_from_lon
 from core.grid import build_field_grid, choose_cell_size, make_grid, median_nn_distance
-from core.ingest import Ingestor
-
-
-def test_ingestor_reads_distributed_csv_schema(sample_csv_paths, tmp_path):
-    soil_path, _ = sample_csv_paths
-    source = pd.read_csv(soil_path).head(8).copy()
-    source.insert(0, "sample_id", np.arange(len(source)))
-    path = tmp_path / "soil_subset.csv"
-    source.to_csv(path, index=False)
-    cfg = {
-        "project": {
-            "id_column": "sample_id",
-            "x": "Longitude",
-            "y": "Latitude",
-            "variables": ["Slope", "EC_DP", "Moisture"],
-            "crs": "EPSG:4326",
-        }
-    }
-
-    result = Ingestor(cfg).read_csv(str(path))
-
-    assert len(result) == len(source)
-    assert result.crs.to_epsg() == 4326
-    assert {"sample_id", "Slope", "EC_DP", "Moisture", "geometry"}.issubset(result.columns)
-    np.testing.assert_allclose(result.geometry.x, source["Longitude"])
-    np.testing.assert_allclose(result.geometry.y, source["Latitude"])
-
-
-def test_ingestor_rejects_a_missing_declared_column(tmp_path):
-    path = tmp_path / "incomplete.csv"
-    pd.DataFrame({"id": [1], "x": [0.0], "y": [0.0]}).to_csv(path, index=False)
-    cfg = {
-        "project": {
-            "id_column": "id",
-            "x": "x",
-            "y": "y",
-            "variables": ["missing_predictor"],
-            "crs": "EPSG:4326",
-        }
-    }
-
-    with pytest.raises(ValueError, match="Missing required column: missing_predictor"):
-        Ingestor(cfg).read_csv(str(path))
 
 
 @pytest.mark.parametrize(

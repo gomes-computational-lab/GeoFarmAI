@@ -9,10 +9,16 @@ def test_import_geofarmai_does_not_load_application_or_llm_modules(repository_ro
     forbidden_prefixes = [
         "ollama",
         "langchain",
+        "langchain_community",
         "streamlit",
         "fastapi",
+        "uvicorn",
         "openai",
         "rpy2",
+        "pydantic",
+        "prefect",
+        "services",
+        "jobs",
     ]
     script = f"""
 import json

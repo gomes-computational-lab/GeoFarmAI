@@ -50,8 +50,8 @@ def python_multispati_components(
     except Exception as exc:
         raise MultispatiUnavailableError(
             "Python MULTISPATI was explicitly requested, but the 'multispaeti' "
-            "package is unavailable or could not be initialized. Install the "
-            "GeoFarmAI base scientific dependencies and retry."
+            "package is unavailable or could not be initialized. Install it with "
+            "`pip install \"geofarmai[multispati]\"` and retry."
         ) from exc
 
     standardized, scaler = standardized_predictors(X)

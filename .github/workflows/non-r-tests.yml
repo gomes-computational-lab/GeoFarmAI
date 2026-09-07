@@ -7,6 +7,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
     strategy:
       matrix:
         python-version: ["3.10", "3.11"]
@@ -17,7 +21,36 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install GeoFarmAI without R support
         run: python -m pip install -e ".[dev]"
-      - name: Verify rpy2 was not installed
-        run: python -c "import importlib.util; assert importlib.util.find_spec('rpy2') is None"
+      - name: Verify optional and application packages were not installed
+        run: |
+          python - <<'PY'
+          import importlib.util
+
+          excluded = (
+              "rpy2",
+              "multispaeti",
+              "libpysal",
+              "esda",
+              "rasterio",
+              "pykrige",
+              "contextily",
+              "pydantic",
+              "prefect",
+              "ollama",
+              "langchain",
+              "langchain_community",
+              "openai",
+              "streamlit",
+              "fastapi",
+              "uvicorn",
+          )
+          installed = [name for name in excluded if importlib.util.find_spec(name)]
+          assert not installed, f"Unexpected optional packages: {installed}"
+          PY
+      - name: Exercise scientific CLI in the base environment
+        run: |
+          geofarmai --help
+          geofarmai validate --config configs/example.yaml
+          geofarmai run --config configs/example_single_csv.yaml
       - name: Run non-R tests
         run: python -m pytest -q -m "not r"

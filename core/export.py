@@ -5,12 +5,7 @@ from typing import Iterable, List
 import geopandas as gpd
 import pandas as pd
 
-import matplotlib
-matplotlib.use("Agg")
-from matplotlib import pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-
-import contextily as ctx
+from geofarmai.exceptions import OptionalDependencyError
 
 
 def zones_from_points(gdf: gpd.GeoDataFrame, labels, min_area=5000):
@@ -53,6 +48,13 @@ def _maybe_add_basemap(ax, layer: gpd.GeoDataFrame, basemap_mode: str):
     if basemap_mode != "web":
         return
     try:
+        import contextily as ctx
+    except ImportError as exc:
+        raise OptionalDependencyError(
+            "Web basemaps require optional plotting dependencies. Install GeoFarmAI "
+            "with `pip install \"geofarmai[raster]\"`."
+        ) from exc
+    try:
         ctx.add_basemap(ax, source=ctx.providers.Stamen.TonerLite)
     except Exception:
         # Tile fetch failure should not break export; skip quietly.
@@ -87,6 +89,18 @@ def export_pdf_report(zones: gpd.GeoDataFrame,
                       feature_columns: Iterable[str],
                       pdf_path: str,
                       basemap: str = "web") -> List[str]:
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        from matplotlib import pyplot as plt
+        from matplotlib.backends.backend_pdf import PdfPages
+    except ImportError as exc:
+        raise OptionalDependencyError(
+            "PDF map reports require optional plotting dependencies. Install "
+            "GeoFarmAI with `pip install \"geofarmai[raster]\"`."
+        ) from exc
+
     pdf_path_obj = Path(pdf_path)
     os.makedirs(str(pdf_path_obj.parent or Path(".")), exist_ok=True)
     feature_columns = [c for c in feature_columns if c in table.columns]

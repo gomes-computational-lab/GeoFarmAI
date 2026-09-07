@@ -18,14 +18,17 @@ from core.multispati import (
     python_multispati_components,
     standardized_predictors,
 )
-from core.spatial import knn_weights
 from geofarmai.data import (
     FieldDataset,
     HarmonizedFieldDataset,
     VariableIdentity,
     harmonize,
 )
-from geofarmai.exceptions import ModelConfigurationError, ModelNotFittedError
+from geofarmai.exceptions import (
+    ModelConfigurationError,
+    ModelNotFittedError,
+    RMultispatiUnavailableError,
+)
 from geofarmai.result import CandidateSolution, GeoFarmResult
 
 
@@ -416,10 +419,17 @@ class GeoFarmModel:
             geometry=gpd.GeoSeries(harmonized.geometry.array, crs=harmonized.crs),
             crs=harmonized.crs,
         )
-        weights = knn_weights(
-            support,
-            k=min(int(self.weights_k), len(support) - 1),
-        )
+        try:
+            from core.spatial import knn_weights
+            weights = knn_weights(
+                support,
+                k=min(int(self.weights_k), len(support) - 1),
+            )
+        except ImportError as exc:
+            raise RMultispatiUnavailableError(
+                "R-backed MULTISPATI requires optional spatial dependencies. "
+                "Install GeoFarmAI with `pip install \"geofarmai[r]\"`."
+            ) from exc
         scores, used_r = multispati_components(
             predictors,
             weights,

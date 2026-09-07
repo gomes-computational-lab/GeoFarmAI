@@ -7,7 +7,6 @@ import pytest
 
 from geofarmai import FieldDataset, GeoFarmModel, ModelConfigurationError
 import geofarmai.model as model_module
-from jobs.flow_mzd import gridsearch as legacy_gridsearch
 
 
 CRS = "EPSG:32615"
@@ -251,33 +250,3 @@ def test_fit_predict_requires_an_explicit_selection_policy():
     with pytest.raises(ModelConfigurationError, match="requires a selection policy"):
         model.fit_predict(_data())
     assert model.get_result().selected_solution is None
-
-
-def test_legacy_gridsearch_retains_historical_outcome_first_selection():
-    data = _data(outcomes=("yield",))
-    frame = data.sources[0].data
-    points = gpd.GeoDataFrame(
-        frame,
-        geometry=gpd.points_from_xy(frame["x"], frame["y"]),
-        crs=CRS,
-    )
-    components = frame[["EC", "moisture"]]
-    config = {
-        "project": {},
-        "clustering": {
-            "k_values": [2, 3],
-            "algorithms": ["kmeans", "gmm"],
-            "seeds": [42],
-        },
-    }
-
-    best, leaderboard = legacy_gridsearch.fn(
-        points,
-        components,
-        config,
-        outcome_name="yield",
-    )
-
-    expected = max(leaderboard, key=lambda row: (row["vr"], row["asc"]))
-    assert best["metrics"] == expected
-    assert "selection" not in config["clustering"]

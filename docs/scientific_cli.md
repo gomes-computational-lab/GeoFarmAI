@@ -1,0 +1,42 @@
+# GeoFarmAI scientific CLI
+
+The GeoFarmAI command-line interface validates and runs source-based scientific
+YAML configurations through the same canonical objects used by the Python API.
+It has no conversational, web, or application-server dependencies.
+
+## Commands
+
+From an installed development checkout:
+
+```bash
+geofarmai --help
+geofarmai validate --config configs/example.yaml
+geofarmai run --config configs/example.yaml
+```
+
+Historical project-style YAML files can be translated through the isolated
+legacy configuration adapter:
+
+```bash
+geofarmai validate --legacy --config configs/project.yaml
+geofarmai run --legacy --config configs/project.yaml
+```
+
+The legacy flag translates configuration into `FieldDataset` and
+`GeoFarmModel`; it does not invoke the removed Prefect jobs.
+
+## Python equivalent
+
+```python
+from geofarmai import load_config, run_from_config
+
+configuration = load_config("configs/example.yaml")
+dataset, model = configuration.build()
+result = model.fit(dataset)
+
+# Equivalent convenience call
+result = run_from_config("configs/example.yaml")
+```
+
+Use explicit source and variable-role declarations for new projects. Outcome
+variables are optional and never enter the predictor matrix.

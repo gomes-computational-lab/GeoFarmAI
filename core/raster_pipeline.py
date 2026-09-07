@@ -12,29 +12,42 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import rasterio
-from rasterio.features import shapes
-from rasterio.plot import show
-from rasterio.transform import from_origin
-from rasterio.warp import Resampling, reproject
 from shapely.geometry import Point, shape
 from sklearn.decomposition import PCA
 from sklearn.neighbors import kneighbors_graph
 from sklearn.preprocessing import StandardScaler
 
-import matplotlib
+from geofarmai.exceptions import OptionalDependencyError
 
-matplotlib.use("Agg")
-from matplotlib import pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+try:
+    import rasterio
+    from rasterio.features import shapes
+    from rasterio.plot import show
+    from rasterio.transform import from_origin
+    from rasterio.warp import Resampling, reproject
+except ImportError as exc:  # pragma: no cover - exercised in a clean install
+    raise OptionalDependencyError(
+        "Raster workflows require optional dependencies. Install GeoFarmAI with "
+        "`pip install \"geofarmai[raster]\"`."
+    ) from exc
+
+try:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    from matplotlib import pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+    from mpl_toolkits.axes_grid1 import make_axes_locatable
+except ImportError as exc:  # pragma: no cover - exercised in a clean install
+    raise OptionalDependencyError(
+        "Raster plotting requires optional dependencies. Install GeoFarmAI with "
+        "`pip install \"geofarmai[raster]\"`."
+    ) from exc
 
 from core.cluster import run_agglomerative, run_fcm, run_gmm, run_kmeans
 from core.evaluate import anova_p, variance_reduction
 from geofarmai.outcome import resolve_pipeline_outcome
 from geofarmai.provenance import decomposition_metric_fields, raster_decomposition_provenance
-from services.project_visuals import write_visual_manifest
-from services.workspace_manifest import refresh_workspace_manifest
 
 try:
     from pykrige.ok import OrdinaryKriging
@@ -146,7 +159,10 @@ def run_raster_mzd_flow(
     force: bool = False,
 ) -> Dict[str, Any]:
     if OrdinaryKriging is None:
-        raise ImportError("PyKrige is required for raster kriging. Install pykrige in the ag-gpt environment.")
+        raise OptionalDependencyError(
+            "Raster kriging requires PyKrige. Install GeoFarmAI with "
+            "`pip install \"geofarmai[raster]\"`."
+        )
 
     project = cfg["project"]
     raster_cfg = cfg.get("raster", {})
@@ -311,7 +327,6 @@ def run_raster_mzd_flow(
 
     pdf_path = run_dir / f"{project['name']}.pdf"
     image_paths = export_raster_pdf(pdf_path, preview_dir, project["name"])
-    visual_manifest_path = write_visual_manifest(cfg)
 
     result = {
         "artifact": str(zones_path),
@@ -319,7 +334,6 @@ def run_raster_mzd_flow(
         "images": image_paths,
         "gridsearch_csv": str(leaderboard_path),
         "metrics_csv": str(metrics_path),
-        "visual_manifest": str(visual_manifest_path) if visual_manifest_path else None,
         "cell_m": None,
         "used_r_multispati": False,
         "used_multispaeti": used_multispaeti,
@@ -337,7 +351,6 @@ def run_raster_mzd_flow(
     if outcome is not None and outcome.legacy_yield_adapter:
         result["rasters"]["yield"] = outcome_rasters
     write_run_manifest(manifest_path, fingerprint, result)
-    refresh_workspace_manifest(cfg)
     return result
 
 def dataset_extent(csv_path: str, x_col: str, y_col: str, crs_in: str, target_crs: str, buffer: float = 0.0) -> Tuple[float, float, float, float]:
