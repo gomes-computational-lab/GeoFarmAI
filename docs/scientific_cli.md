@@ -10,8 +10,8 @@ From an installed development checkout:
 
 ```bash
 geofarmai --help
-geofarmai validate --config configs/example.yaml
-geofarmai run --config configs/example.yaml
+geofarmai validate --config examples/configs/single_csv_yield.yaml
+geofarmai run --config examples/configs/single_csv_yield.yaml
 ```
 
 Historical project-style YAML files can be translated through the isolated
@@ -30,12 +30,12 @@ The legacy flag translates configuration into `FieldDataset` and
 ```python
 from geofarmai import load_config, run_from_config
 
-configuration = load_config("configs/example.yaml")
+configuration = load_config("examples/configs/single_csv_yield.yaml")
 dataset, model = configuration.build()
 result = model.fit(dataset)
 
 # Equivalent convenience call
-result = run_from_config("configs/example.yaml")
+result = run_from_config("examples/configs/single_csv_yield.yaml")
 ```
 
 Use explicit source and variable-role declarations for new projects. Outcome

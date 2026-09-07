@@ -7,8 +7,11 @@
 ## Base scientific installation
 
 ```bash
-pip install geofarmai
+python -m pip install .
 ```
+
+This command installs from a source checkout. GeoFarmAI is not currently
+claimed to be published on PyPI.
 
 The base dependencies are NumPy, pandas, SciPy, GeoPandas, pyproj, Shapely,
 scikit-learn, scikit-fuzzy, statsmodels, and PyYAML. Together they support the
@@ -27,6 +30,10 @@ No LLM, conversational, UI, or server package is a base dependency.
 | `r` | rpy2 plus Python-side spatial weights for existing R MULTISPATI |
 | `raster` | rasterio, PyKrige, matplotlib, and contextily raster/report workflows |
 
+Install an optional extra from a source checkout with, for example,
+`python -m pip install ".[raster]"`. Extras are not part of the base
+installation.
+
 Explicit optional-engine requests fail clearly when their dependencies are
 missing. Canonical `GeoFarmModel` decomposition does not silently replace an
 explicit MULTISPATI request with PCA. The historical raster pipeline retains
@@ -35,7 +42,7 @@ its already-documented automatic Python-MULTISPATI fallback and provenance.
 ## Development
 
 ```bash
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 ```
 
 The `dev` extra contains pytest and the Python build frontend. The transitional

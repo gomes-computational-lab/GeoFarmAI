@@ -1,199 +1,450 @@
 # GeoFarmAI
 
-GeoFarmAI is a reusable scientific Python library for geospatial agricultural
-management-zone delineation. It accepts one or many explicitly role-labelled
-data sources, harmonizes their spatial support, applies established
-decomposition and clustering methods, evaluates every candidate solution, and
-returns structured scientific results with provenance.
+GeoFarmAI is a scientific Python library for delineating candidate agricultural
+management zones from one or more heterogeneous geospatial datasets. It keeps
+variable roles explicit, harmonizes point observations onto a compatible
+spatial support, applies established feature-representation and clustering
+methods, and returns candidate partitions with validation metrics and
+provenance.
 
-GeoFarmAI is the reusable geospatial analysis framework. The separate ag-gpt
-repository is the conversational and web application that uses GeoFarmAI to
-run analyses and interpret their outputs. The dependency direction is always
-`ag-gpt -> GeoFarmAI`.
+## Overview
 
-## Capabilities
+Management-zone delineation partitions a field into spatial units that are
+more internally similar than the field as a whole. GeoFarmAI provides the
+analytical workflow for constructing and evaluating those partitions. It can
+combine sources such as soil measurements, terrain attributes, crop
+observations, or nutrient samples even when they were collected at different
+locations.
 
-- CSV, pandas DataFrame, and GeoPandas GeoDataFrame inputs
-- one or many spatial data sources
-- explicit predictor, outcome, coordinate, identifier, and metadata roles
-- optional outcomes for fully unsupervised analysis
-- CRS transformation, grid generation, and spatial harmonization
-- IDW, nearest-neighbor, and buffer-mean reconciliation
-- PCA and optional Python- or R-backed MULTISPATI
-- KMeans, Gaussian mixture, fuzzy C-means, and agglomerative clustering
-- silhouette and Calinski-Harabasz internal metrics
-- generic outcome variance reduction and ANOVA validation
-- explicit candidate-selection policies, including `selection=None`
-- vector/raster scientific export and provenance
+GeoFarmAI produces analytical zone delineations. A selected partition is not,
+by itself, proof that the zones are agronomically correct or suitable for an
+operational decision; interpretation and field validation remain necessary.
 
-Outcome columns never enter the clustering predictor matrix. Variable names do
-not imply scientific roles: `nitrate`, `yield`, or any other numeric variable
-can be a predictor or outcome only when explicitly declared.
+## Key Capabilities
+
+- CSV, pandas `DataFrame`, and point GeoPandas `GeoDataFrame` inputs
+- one or many explicitly identified data sources
+- predictor, outcome, coordinate, identifier, and metadata variable roles
+- projected/geographic CRS handling and deterministic target-CRS selection
+- direct spatial alignment or grid-based reconciliation of heterogeneous data
+- IDW, nearest-neighbor, and buffer-mean vector reconciliation
+- standardized predictors without reduction, PCA, and optional MULTISPATI
+- KMeans, Gaussian mixture, fuzzy C-means, and connected agglomerative clustering
+- fixed K or multiple candidate K values
+- silhouette and Calinski–Harabasz internal validation
+- optional outcome variance-reduction and ANOVA validation
+- explicit model-selection policy or retention of all candidates without a winner
+- structured results, provenance, GeoPackage output, and CSV metrics tables
+
+## Scientific Workflow
+
+```text
+agricultural point observations
+              ↓
+explicit source, coordinate, and variable roles
+              ↓
+spatial harmonization
+              ↓
+predictor matrix (outcomes excluded)
+              ↓
+optional dimensionality reduction
+              ↓
+candidate management-zone clustering
+              ↓
+internal validation
+              ↓
+optional outcome-based validation
+              ↓
+GeoFarmResult and scientific exports
+```
+
+The same implementation is used by the Python API and canonical YAML
+configuration interface.
 
 ## Installation
 
-From a source checkout:
+GeoFarmAI currently supports Python 3.10 or later. From a source checkout,
+create an isolated environment and install the base scientific package:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+python -m pip install .
+```
+
+For development and tests:
+
+```bash
 python -m pip install -e ".[dev]"
 ```
 
-Optional scientific features are installed separately:
+The following optional extras are defined in `pyproject.toml`:
 
 ```bash
-python -m pip install -e ".[multispati]"  # Python MULTISPATI
-python -m pip install -e ".[spatial]"     # libpysal/esda utilities
-python -m pip install -e ".[raster]"      # raster, kriging, and PDF support
-python -m pip install -e ".[r]"           # Python bridge for R MULTISPATI
+python -m pip install ".[multispati]"  # Python multispaeti engine
+python -m pip install ".[spatial]"     # libpysal/esda utilities
+python -m pip install ".[raster]"      # raster, kriging, map, and PDF support
+python -m pip install ".[r]"           # Python dependencies for R MULTISPATI
 ```
 
-The `r` extra does not install R or the required R packages. A compatible R
-installation with `ade4`, `spdep`, and `adespatial` must be configured
-separately. Explicit MULTISPATI requests fail clearly if the selected engine is
-unavailable; canonical analysis does not silently substitute PCA.
+The `r` extra does not install R itself or the R packages `ade4`, `spdep`, and
+`adespatial`. Those must be installed and configured separately. The base
+installation does not require an R runtime, a MULTISPATI engine, a raster
+stack, or an application/web stack.
 
-## Five-minute Python workflow
+GeoFarmAI is not claimed to be available from PyPI at this development stage.
+
+## Quick Start
+
+This example uses the tested synthetic data distributed in
+[`examples/data/single_csv_yield.csv`](examples/data/single_csv_yield.csv):
 
 ```python
 from geofarmai import FieldDataset, GeoFarmModel
 
 data = FieldDataset.from_csv(
-    "field.csv",
-    coordinates=("longitude", "latitude"),
-    crs="EPSG:4326",
+    "examples/data/single_csv_yield.csv",
+    source_id="field_observations",
+    coordinates=("x", "y"),
+    crs="EPSG:32615",
     predictors=["EC", "moisture", "elevation"],
-    outcome="yield",  # optional; any explicit numeric outcome is supported
+    outcome="yield",
 )
 
 model = GeoFarmModel(
     decomposition="pca",
-    clustering=["kmeans", "gmm", "fcm"],
-    k=range(2, 6),
-    selection="silhouette",
+    n_components=2,
+    clustering="kmeans",
+    k=range(2, 4),
+    selection="variance_reduction",
+    selection_outcome="yield",
     random_state=42,
 )
-result = model.fit(data)
 
+result = model.fit(data)
 print(result.summary())
-table = result.to_dataframe()
 artifacts = result.export("outputs/field_zones.gpkg")
+print(artifacts)
 ```
 
-Use `decomposition="none"`, `"pca"`, or `"multispati"`. Selection supports
-`"silhouette"`, `"calinski_harabasz"`, `"variance_reduction"`, and `None`.
-Variance-reduction selection requires an explicit outcome and, when several
-outcomes exist, an explicit `selection_outcome`.
+`yield` is explicitly declared as an outcome here. It is used to validate and
+select candidate partitions, but it is never included in the predictor matrix
+or PCA inputs.
 
-`delineate_zones(data, **model_options)` is a thin convenience wrapper around
-`GeoFarmModel(...).fit(data)`. The deprecated `run_pipeline` name remains a
-pure scientific wrapper for `FieldDataset` inputs; mapping-based application
-orchestration has been removed.
+## Data Model
 
-## YAML workflow
+A `DataSource` represents one input table and includes:
 
-The canonical YAML schema makes sources, coordinates, CRS, and variable roles
-explicit:
+- a stable source identifier;
+- a CSV path, pandas `DataFrame`, or point `GeoDataFrame`;
+- an explicit `CoordinateSpec` or x/y columns and CRS;
+- one or more `VariableSpec` declarations;
+- optional descriptive source metadata.
+
+A `FieldDataset` contains one or many `DataSource` objects. For a single table,
+`FieldDataset.from_csv`, `from_dataframe`, and `from_geodataframe` provide
+concise constructors. Multiple inputs are assembled with
+`FieldDataset.from_sources`.
+
+Each variable has one explicit role:
+
+- `predictor`: enters the feature matrix used to delineate zones;
+- `outcome`: evaluates candidate zones and can drive selection;
+- `coordinate`: locates observations;
+- `identifier`: identifies records without becoming a feature;
+- `metadata`: retained descriptive information that is not a feature.
+
+Source and variable identities are retained together. Thus, variables named
+`moisture` from two different sources remain distinct rather than silently
+overwriting one another.
+
+GeoFarmAI also provides non-LLM schema inspection and coordinate-name candidate
+detection. These utilities do not assign scientific predictor or outcome roles.
+
+## Predictors and Outcomes
+
+Predictors are the variables used to construct management zones. Outcomes are
+external measurements used to evaluate or select zone solutions when desired.
+
+Outcomes are optional. Yield is one possible outcome, not a required input.
+Nitrate, biomass, protein, profitability, or another numeric measurement can
+also be an outcome when explicitly declared. A variable named `nitrate` can
+instead be a predictor in a different analysis if the user explicitly assigns
+that role.
+
+GeoFarmAI does not infer a scientific role from names such as `yield`,
+`nitrate`, or `EC`. Outcome variables are kept out of harmonized predictors and
+decomposition inputs.
+
+## Spatial Harmonization
+
+Current harmonization operates on point observations. Geometry is authoritative
+for a point `GeoDataFrame`; otherwise numeric x/y columns are converted to point
+geometry.
+
+The `auto` strategy behaves deterministically:
+
+- one scientific source is reused directly;
+- colocated sources are aligned directly within a configurable metric tolerance;
+- when predictor locations match but outcome locations differ, predictors stay
+  on their direct support and outcomes are reconciled to it;
+- when predictor sources differ spatially, variables are reconciled to a common
+  analysis grid.
+
+Users can also request `strategy="direct"` or `strategy="grid"`. Direct
+alignment fails if locations do not correspond within the configured tolerance.
+Supported vector reconciliation methods are `idw`, `nearest`, and
+`buffer_mean`.
+
+Distance operations use a projected CRS with metre units. A shared metric CRS
+is preserved where possible; otherwise GeoFarmAI uses its existing automatic
+UTM selection, or an explicitly supplied metric target CRS. Original and target
+CRS, actual strategy, reconciliation method, grid resolution, coverage, and
+per-variable construction details are retained in provenance.
+
+GeoFarmAI does not introduce general mean imputation, zero filling, or silent
+row dropping. Missing/non-finite predictors remaining after harmonization must
+be resolved by the user before model fitting.
+
+## Feature Representation
+
+`GeoFarmModel` supports:
+
+- `decomposition="none"`: standardize predictors without reducing dimensions;
+- `decomposition="pca"`: standardized principal component analysis;
+- `decomposition="multispati"`: MULTISPATI using an explicitly selected
+  `multispati_engine="python"` or `"r"`.
+
+Python MULTISPATI requires the `multispati` extra. R MULTISPATI requires the
+`r` extra plus a compatible external R installation and its spatial packages.
+When MULTISPATI is explicitly requested and unavailable, GeoFarmAI raises a
+clear error; the canonical model does not silently substitute PCA.
+
+## Management-Zone Clustering
+
+The `clustering` argument accepts one method or several:
+
+- `"kmeans"` — KMeans;
+- `"gmm"` — Gaussian mixture model;
+- `"fcm"` — fuzzy C-means, returned as the current hard zone assignment;
+- `"agglomerative"` — agglomerative clustering with spatial connectivity.
+
+`k` may be a single integer or an iterable such as `range(2, 6)`. Every
+algorithm/K combination is evaluated and retained as a `CandidateSolution`.
+KMeans, GMM, and FCM use the model's explicit `random_state`; agglomerative
+clustering has no stochastic seed in the current implementation.
+
+## Model Selection and Validation
+
+### Internal validation
+
+Every candidate records:
+
+- average silhouette (`asc`);
+- Calinski–Harabasz score (`ch_score`).
+
+Either may select a candidate through `selection="silhouette"` or
+`selection="calinski_harabasz"`. Both selection policies maximize the requested
+metric.
+
+### Outcome validation
+
+For every explicitly declared outcome with sufficient finite observations,
+each candidate records:
+
+- variance reduction;
+- ANOVA p-value;
+- observation count;
+- coverage fraction.
+
+`selection="variance_reduction"` maximizes variance reduction for the selected
+outcome. With multiple outcomes, `selection_outcome` must identify the outcome
+used for selection.
+
+Outcome metrics are not required for clustering. With no outcomes, internal
+metrics and candidate partitions remain available. With `selection=None`, all
+candidates are retained but `selected_solution`, selected `zone_labels`, and
+top-level selected metrics remain empty rather than choosing a winner
+implicitly.
+
+## Four Tested End-to-End Examples
+
+All example CSV files are small, deterministic, synthetic datasets. Each
+Python example has an equivalent canonical YAML configuration and is exercised
+by the release acceptance suite.
+
+1. **One CSV with yield** — EC, moisture, and elevation are predictors; yield
+   is an outcome used for variance-reduction validation and selection.
+   [Python](examples/single_csv_yield.py) ·
+   [YAML](examples/configs/single_csv_yield.yaml)
+
+2. **Heterogeneous soil, terrain, and yield sources** — sampling locations
+   differ, so GeoFarmAI uses a reconciliation grid while preserving source and
+   predictor provenance. Yield remains outcome-only.
+   [Python](examples/heterogeneous_yield.py) ·
+   [YAML](examples/configs/heterogeneous_yield.yaml)
+
+3. **Nitrate as an outcome** — nitrate is an outcome because the configuration
+   explicitly says so, not because GeoFarmAI interprets its name. It is
+   reconciled to the soil support and excluded from PCA and clustering inputs.
+   [Python](examples/nitrate_outcome.py) ·
+   [YAML](examples/configs/nitrate_outcome.yaml)
+
+4. **Predictors only** — spatially different soil and terrain predictors are
+   harmonized with no outcome. Internal metrics are produced, outcome metrics
+   are absent, and `selection=None` retains both K candidates without choosing
+   a winner.
+   [Python](examples/predictors_only.py) ·
+   [YAML](examples/configs/predictors_only.yaml)
+
+See [the acceptance-example guide](examples/README.md) for expected result and
+export structures.
+
+## Canonical YAML Configuration
+
+The following is the tested single-CSV configuration. Because it lives under
+`examples/configs/`, its input path is relative to that directory:
 
 ```yaml
 sources:
-  - id: field
-    path: ../data/example_field.csv
+  - id: field_observations
+    path: ../data/single_csv_yield.csv
     coordinates: {x: x, y: y, crs: EPSG:32615}
     variables:
-      EC: {role: predictor, domain: soil}
-      moisture: {role: predictor, domain: soil}
-      yield: {role: outcome, domain: crop}
+      EC: {role: predictor, domain: soil, units: dS/m}
+      moisture: {role: predictor, domain: soil, units: percent}
+      elevation: {role: predictor, domain: terrain, units: m}
+      yield: {role: outcome, domain: crop, units: Mg/ha}
 
 analysis:
   harmonization: {strategy: auto, resolution: auto, method: idw}
   decomposition: {method: pca, n_components: 2}
   clustering:
-    methods: [kmeans, gmm]
-    k: {min: 2, max: 4}
+    methods: [kmeans]
+    k: {min: 2, max: 3}
   selection: {metric: variance_reduction, outcome: yield}
   random_state: 42
 ```
 
+Load and run canonical YAML through the public API:
+
 ```python
 from geofarmai import load_config, run_from_config
 
-configuration = load_config("configs/example.yaml")
-data, model = configuration.build()
-result = model.fit(data)
+configuration = load_config("examples/configs/single_csv_yield.yaml")
+dataset, model = configuration.build()
+result = model.fit(dataset)
 
-# Equivalent one-call form
-result = run_from_config("configs/example.yaml")
+# Equivalent one-call execution
+result = run_from_config("examples/configs/single_csv_yield.yaml")
 ```
 
-Relative paths resolve from the YAML file. `load_legacy_config()` and
-`run_from_config(path, legacy=True)` retain translation for historical
-project-style YAML without restoring the removed workflow jobs.
+Relative source paths resolve from the YAML file, not the current working
+directory. Historical project-style YAML can still be translated with
+`load_legacy_config` or `run_from_config(path, legacy=True)`, but new analyses
+should use the canonical source-based schema.
 
-## Scientific CLI
+## Command-Line Interface
+
+The installed scientific CLI exposes only validation and execution:
 
 ```bash
 geofarmai --help
-geofarmai validate --config configs/example.yaml
-geofarmai run --config configs/example.yaml
+geofarmai validate --config examples/configs/single_csv_yield.yaml
+geofarmai run --config examples/configs/single_csv_yield.yaml
 ```
 
-See [docs/scientific_cli.md](docs/scientific_cli.md) for the legacy-YAML flag
-and Python equivalents.
+`validate` parses the configuration and constructs its canonical dataset and
+model. `run` executes the same `GeoFarmModel` workflow used by the Python API.
+See [the CLI guide](docs/scientific_cli.md) for isolated legacy-configuration
+support.
 
-## Results and outputs
+## Results and Outputs
 
-`GeoFarmResult` exposes:
+`GeoFarmModel.fit` returns a `GeoFarmResult` containing:
 
-- selected zone labels, when a selection policy is used;
-- every candidate solution and its deterministic identity;
-- predictor and outcome identities;
-- component scores and loadings when applicable;
-- internal and outcome-validation metrics;
-- CRS, geometry, harmonization, and decomposition provenance;
-- configuration and exported artifact paths.
+- `candidate_solutions`: every algorithm/K candidate and its labels and metrics;
+- `selected_solution` and `zone_labels`: the selected candidate, when selection
+  is enabled;
+- `predictor_names` and `outcome_names`;
+- `component_scores` and `component_loadings`, when applicable;
+- `internal_metrics` and `outcome_validation_metrics` for the selected solution;
+- `spatial_metadata`, `harmonization_provenance`, and
+  `decomposition_provenance`;
+- the effective model `configuration` and exported `artifacts`.
 
-`result.export(...)` writes reusable GeoPackage and CSV products. The optional
-raster module retains scientific kriging, raster clustering, GeoTIFF, preview,
-and PDF generation without writing application workspace or visualization
-manifests.
+Useful result interfaces are `result.summary()`, `result.leaderboard`,
+`result.to_dataframe()`, and `result.export("outputs/field_zones.gpkg")`.
 
-## Repository architecture
+The base export writes:
 
-- `geofarmai/` — canonical data, configuration, model, result, and CLI APIs
-- `core/` — temporarily retained scientific algorithms used by the canonical API
-- `configs/` — portable examples and historical configuration fixtures
-- `data/` — small example and test inputs
-- `tests/` — deterministic scientific and package-boundary tests
-- `docs/` — dependency, CLI, and migration documentation
+- a GeoPackage with aligned samples and, when a solution is selected, dissolved
+  zones;
+- a candidate leaderboard CSV;
+- a selected metrics/summary CSV.
 
-Application services and Prefect workflow jobs are intentionally absent from
-the source tree and wheel. See
-[docs/ag_gpt_migration.md](docs/ag_gpt_migration.md) for the repository
-boundary.
+For `selection=None`, `export()` writes the unlabelled analysis support and full
+candidate table. Pass a retained candidate or its `solution_id` through the
+`solution` argument to export that candidate's zones without changing the
+result's selection state.
 
-## Development
+Raster, GeoTIFF, preview-map, and PDF functionality belongs to the optional
+`raster` workflow and requires the `raster` extra.
+
+## Reproducibility
+
+GeoFarmAI records the choices needed to understand how an analysis was built:
+
+- explicit source, coordinate, predictor, and outcome declarations;
+- original and target CRS;
+- requested and actual harmonization strategy;
+- reconciliation method, parameters, coverage, and grid resolution;
+- requested and actual decomposition method;
+- clustering method, K, and applicable random seed;
+- selection metric and outcome;
+- every retained candidate and its metrics.
+
+The tested YAML configurations and synthetic acceptance datasets provide
+reproducible examples. Fixed seeds make supported stochastic methods
+deterministic within the tested environment, but exact floating-point values
+can still vary across operating systems, numerical libraries, or dependency
+versions.
+
+## Limitations
+
+- Canonical vector harmonization currently requires point observations; it does
+  not provide general polygon or arbitrary-geometry reconciliation.
+- Vector reconciliation does not support kriging. Ordinary kriging is retained
+  in the optional raster workflow.
+- Python MULTISPATI depends on a compatible `multispaeti` and scikit-learn
+  combination.
+- R MULTISPATI requires a compatible external R/rpy2 environment and the
+  required R spatial packages.
+- Raster and additional spatial-weight functionality require optional extras.
+- GeoFarmAI does not silently impute incomplete predictors. Outcome metrics
+  reflect the finite observations and spatial coverage supplied by the user.
+- Outcome-based validation depends on the outcome's measurement quality and
+  spatial representativeness.
+- Candidate zones require agronomic interpretation and field validation before
+  operational use.
+
+## External Applications
+
+External applications can call GeoFarmAI through its public scientific API.
+The separate `ag-gpt` repository is one such application consumer; the
+dependency direction is `ag-gpt → GeoFarmAI`. Application and conversational
+functionality are not GeoFarmAI runtime requirements.
+
+## Development Status, Citation, and License
+
+GeoFarmAI is currently a pre-release library at version `0.1.0`. The default
+test suite requires no network, R runtime, or external service:
 
 ```bash
 python -m pytest -q
 python -m build
 ```
 
-The default suite requires no network, R runtime, LLM provider, web server, or
-application service. R-dependent tests are optional and separately marked.
-
-## Limitations
-
-- Vector reconciliation does not implement kriging; it fails explicitly.
-  Ordinary kriging is available through the optional raster workflow.
-- R-backed MULTISPATI depends on a compatible external native R environment.
-- The top-level `core` namespace is retained temporarily to avoid moving or
-  rewriting established scientific algorithms during repository separation.
-
-## Citation and license
-
-Citation metadata and final author information require human review before a
-public release. Review the repository license status before redistribution.
-
-Development status: pre-release (`0.1.0`).
+Final citation metadata, author information, repository metadata, and license
+selection require human review. Do not redistribute the package until its
+license status has been resolved.
