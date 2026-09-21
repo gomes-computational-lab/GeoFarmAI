@@ -4,7 +4,6 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
-import yaml
 from shapely.geometry import Point
 
 from geofarmai import (
@@ -43,31 +42,31 @@ def _source(
     )
 
 
-def test_field_dataset_from_distributed_soil_csv(sample_csv_paths):
-    soil_path, _ = sample_csv_paths
+def test_field_dataset_from_distributed_synthetic_csv(repository_root):
+    soil_path = repository_root / "data" / "example_soil.csv"
 
     dataset = FieldDataset.from_csv(
         soil_path,
         source_id="soil_observations",
         variables=[
-            VariableSpec("Slope", "predictor", domain="soil", units="degrees"),
-            VariableSpec("EC_DP", "predictor", domain="soil"),
+            VariableSpec("EC", "predictor", domain="soil"),
+            VariableSpec("moisture", "predictor", domain="soil", units="percent"),
         ],
-        x="Longitude",
-        y="Latitude",
-        crs="EPSG:4326",
+        x="x",
+        y="y",
+        crs="EPSG:32615",
     )
 
     source = dataset.sources[0]
     assert source.path == soil_path
-    assert len(source.data) > 100
-    assert dataset.predictor_names == ("Slope", "EC_DP")
+    assert len(source.data) == 12
+    assert dataset.predictor_names == ("EC", "moisture")
     assert dataset.outcomes == ()
     assert not dataset.has_outcomes
-    assert source.coordinate_spec.is_geographic is True
+    assert source.coordinate_spec.is_geographic is False
     assert source.variables_for_role("coordinate") == (
-        VariableSpec("Longitude", "coordinate"),
-        VariableSpec("Latitude", "coordinate"),
+        VariableSpec("x", "coordinate"),
+        VariableSpec("y", "coordinate"),
     )
 
 
@@ -194,15 +193,29 @@ def test_numeric_predictor_and_outcome_missing_values_are_preserved():
 def test_legacy_config_adapter_preserves_names_and_explicit_semantics(
     repository_root,
 ):
-    with (repository_root / "configs" / "project.yaml").open() as stream:
-        config = yaml.safe_load(stream)
+    config = {
+        "project": {
+            "crs_in": "EPSG:32615",
+            "soil": {
+                "path": "data/example_soil.csv",
+                "x": "x",
+                "y": "y",
+                "variables": ["EC", "moisture"],
+            },
+            "yield": {
+                "path": "data/example_outcomes.csv",
+                "x": "x",
+                "y": "y",
+                "column": "yield",
+            },
+        }
+    }
 
     dataset = FieldDataset.from_legacy_config(config, base_path=repository_root)
 
     assert [source.source_id for source in dataset.sources] == ["soil", "yield"]
-    assert "EC_DP" in dataset.predictor_names
-    assert "Yld_Mass_Dry_lb_ac" in dataset.outcome_names
-    assert "yield" not in dataset.outcome_names
+    assert dataset.predictor_names == ("EC", "moisture")
+    assert dataset.outcome_names == ("yield",)
     assert dataset.get_source("soil").metadata["legacy_section"] == "soil"
 
 

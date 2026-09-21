@@ -14,15 +14,6 @@ def repository_root() -> Path:
     return REPOSITORY_ROOT
 
 
-@pytest.fixture(scope="session")
-def sample_csv_paths(repository_root: Path) -> tuple[Path, Path]:
-    soil = repository_root / "data" / "soil.csv"
-    yield_data = repository_root / "data" / "yield.csv"
-    assert soil.is_file()
-    assert yield_data.is_file()
-    return soil, yield_data
-
-
 @pytest.fixture
 def separated_matrix() -> np.ndarray:
     return np.array(

@@ -1,5 +1,9 @@
 AGENTS.md
 CONTRIBUTORS.md
+configs/project.yaml
+data/soil.csv
+data/yield.csv
+/results/field1/
 .DS_Store
 .pytest_cache/
 __pycache__/

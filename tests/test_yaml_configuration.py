@@ -408,15 +408,37 @@ def test_explicit_target_crs_must_be_valid_metric_projected_crs(tmp_path):
         load_config(_write_project(tmp_path, document))
 
 
-def test_legacy_loader_is_explicit_and_keeps_assumptions_isolated(repository_root):
-    configured = load_legacy_config(repository_root / "configs" / "project.yaml")
+def test_legacy_loader_is_explicit_and_keeps_assumptions_isolated(tmp_path):
+    document = {
+        "project": {
+            "crs_in": "EPSG:32615",
+            "soil": {
+                "path": "../data/field.csv",
+                "x": "x",
+                "y": "y",
+                "variables": ["EC"],
+            },
+            "yield": {
+                "path": "../data/field.csv",
+                "x": "x",
+                "y": "y",
+                "column": "yield",
+            },
+        },
+        "clustering": {
+            "algorithms": ["kmeans"],
+            "k_values": [2],
+            "seeds": [42, 1337],
+        },
+    }
+    configured = load_legacy_config(_write_project(tmp_path, document))
     data, model = configured.build()
 
     assert configured.legacy is True
     assert [source.source_id for source in data.sources] == ["soil", "yield"]
-    assert data.outcome_names == ("Yld_Mass_Dry_lb_ac",)
+    assert data.outcome_names == ("yield",)
     assert model.selection == "variance_reduction"
-    assert model.selection_outcome == "Yld_Mass_Dry_lb_ac"
+    assert model.selection_outcome == "yield"
     assert not any(
         spec.role is VariableRole.IDENTIFIER
         for source in data.sources
@@ -477,6 +499,6 @@ def test_explicit_null_legacy_outcome_overrides_yield_section(tmp_path):
     assert configured.model_options["selection"] == "silhouette"
 
 
-def test_new_loader_does_not_accept_legacy_schema(repository_root):
+def test_new_loader_does_not_accept_legacy_schema(tmp_path):
     with pytest.raises(ConfigurationError, match="Unsupported keys"):
-        load_config(repository_root / "configs" / "project.yaml")
+        load_config(_write_project(tmp_path, _legacy_document("nitrate")))

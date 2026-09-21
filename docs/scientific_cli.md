@@ -18,12 +18,14 @@ Historical project-style YAML files can be translated through the isolated
 legacy configuration adapter:
 
 ```bash
-geofarmai validate --legacy --config configs/project.yaml
-geofarmai run --legacy --config configs/project.yaml
+geofarmai validate --legacy --config /path/to/private-project.yaml
+geofarmai run --legacy --config /path/to/private-project.yaml
 ```
 
 The legacy flag translates configuration into `FieldDataset` and
-`GeoFarmModel`; it does not invoke the removed Prefect jobs.
+`GeoFarmModel`; it does not invoke the removed Prefect jobs. Research datasets
+and their project-specific configuration are intentionally not distributed
+with GeoFarmAI.
 
 ## Python equivalent
 
