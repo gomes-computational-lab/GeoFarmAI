@@ -35,6 +35,8 @@ operational decision; interpretation and field validation remain necessary.
 - optional outcome variance-reduction and ANOVA validation
 - explicit model-selection policy or retention of all candidates without a winner
 - structured results, provenance, GeoPackage output, and CSV metrics tables
+- optional metric DEM interpolation, Horn slope, and elevation-Laplacian
+  general curvature rasters
 
 ## Scientific Workflow
 

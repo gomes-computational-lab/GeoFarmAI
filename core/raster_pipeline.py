@@ -424,6 +424,7 @@ def krige_csv_variables(
         y,
         buffer=float(raster_cfg.get("buffer", 0.0)),
         cell_size=raster_cfg.get("cell_size"),
+        bounds=bounds,
     )
     coordinates_type = "geographic" if str(target_crs).upper() == "EPSG:4326" else "euclidean"
     results: Dict[str, Dict[str, Any]] = {}
@@ -525,9 +526,25 @@ def build_arcgis_grid(
     height = y_max - y_min
     if cell_size is None:
         cell_size = min(width, height) / 250
-    grid_x = np.arange(x_min, x_max, cell_size)
-    grid_y = np.arange(y_min, y_max, cell_size)
+    grid_x = _grid_centers_covering_extent(x_min, x_max, float(cell_size))
+    grid_y = _grid_centers_covering_extent(y_min, y_max, float(cell_size))
     return grid_x, grid_y, float(cell_size)
+
+
+def _grid_centers_covering_extent(
+    minimum: float,
+    maximum: float,
+    cell_size: float,
+) -> np.ndarray:
+    """Return cell centres whose half-cell footprint covers both extrema."""
+
+    centers = np.arange(minimum, maximum, cell_size)
+    if centers.size == 0:
+        centers = np.array([minimum], dtype=float)
+    tolerance = np.finfo(float).eps * max(abs(minimum), abs(maximum), 1.0) * 8.0
+    if centers[-1] + cell_size / 2.0 < maximum - tolerance:
+        centers = np.append(centers, centers[-1] + cell_size)
+    return centers
 
 
 def ordinary_krige(
@@ -560,7 +577,15 @@ def ordinary_krige(
 
 
 def write_raster(array: np.ndarray, out_path: Path, crs: str, grid_x: np.ndarray, grid_y: np.ndarray, cell_size: float) -> None:
-    transform = from_origin(grid_x.min(), grid_y.max(), cell_size, cell_size)
+    # Ordinary kriging evaluates at grid_x/grid_y cell centres. Rasterio's
+    # transform describes pixel edges, so offset the outer centres by half a
+    # cell rather than incorrectly storing centre coordinates as edges.
+    transform = from_origin(
+        grid_x.min() - cell_size / 2.0,
+        grid_y.max() + cell_size / 2.0,
+        cell_size,
+        cell_size,
+    )
     with rasterio.open(
         out_path,
         "w",

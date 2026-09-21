@@ -30,8 +30,8 @@ def test_arcgis_grid_honors_explicit_bounds():
         bounds=(0.0, 30.0, 50.0, 90.0),
     )
 
-    np.testing.assert_allclose(grid_x, [0.0, 10.0, 20.0])
-    np.testing.assert_allclose(grid_y, [50.0, 60.0, 70.0, 80.0])
+    np.testing.assert_allclose(grid_x, [0.0, 10.0, 20.0, 30.0])
+    np.testing.assert_allclose(grid_y, [50.0, 60.0, 70.0, 80.0, 90.0])
     assert cell == 10.0
 
 
@@ -44,9 +44,32 @@ def test_raster_write_round_trip_preserves_values_crs_and_transform(tmp_path):
     with rasterio.open(path) as dataset:
         actual = dataset.read(1)
         assert dataset.crs.to_epsg() == 32612
-        assert dataset.transform == from_origin(100.0, 210.0, 10.0, 10.0)
+        assert dataset.transform == from_origin(95.0, 215.0, 10.0, 10.0)
         assert np.isnan(dataset.nodata)
     np.testing.assert_allclose(actual, values, equal_nan=True)
+
+
+def test_grid_centres_and_written_extent_cover_source_extrema(tmp_path):
+    x = np.array([100.0, 109.9])
+    y = np.array([200.0, 209.9])
+    grid_x, grid_y, cell = build_arcgis_grid(x, y, cell_size=5.0)
+    output = tmp_path / "covered_extent.tif"
+
+    write_raster(
+        np.zeros((len(grid_y), len(grid_x)), dtype="float64"),
+        output,
+        "EPSG:32612",
+        grid_x,
+        grid_y,
+        cell,
+    )
+
+    with rasterio.open(output) as dataset:
+        bounds = dataset.bounds
+    assert bounds.left < x.min() < bounds.right
+    assert bounds.left < x.max() < bounds.right
+    assert bounds.bottom < y.min() < bounds.top
+    assert bounds.bottom < y.max() < bounds.top
 
 
 def test_raster_zone_polygonization_is_label_permutation_invariant():

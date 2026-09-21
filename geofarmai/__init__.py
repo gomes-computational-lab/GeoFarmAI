@@ -29,6 +29,7 @@ from .exceptions import (
     OutcomeConfigurationError,
     RMultispatiUnavailableError,
     SchemaValidationError,
+    TerrainProcessingError,
 )
 __all__ = [
     "CoordinateCandidates",
@@ -53,6 +54,9 @@ __all__ = [
     "RMultispatiUnavailableError",
     "SchemaInspection",
     "SchemaValidationError",
+    "TerrainDerivatives",
+    "TerrainProcessingError",
+    "TerrainResult",
     "VariableRole",
     "VariableIdentity",
     "VariableProvenance",
@@ -61,6 +65,9 @@ __all__ = [
     "delineate_zones",
     "harmonize",
     "inspect_schema",
+    "derive_terrain",
+    "terrain_derivatives",
+    "terrain_from_elevation_points",
     "run_pipeline",
     "load_config",
     "load_legacy_config",
@@ -116,5 +123,27 @@ def __getattr__(name):
             "load_config": load_config,
             "load_legacy_config": load_legacy_config,
             "run_from_config": run_from_config,
+        }[name]
+    if name in {
+        "TerrainDerivatives",
+        "TerrainResult",
+        "derive_terrain",
+        "terrain_derivatives",
+        "terrain_from_elevation_points",
+    }:
+        from .terrain import (
+            TerrainDerivatives,
+            TerrainResult,
+            derive_terrain,
+            terrain_derivatives,
+            terrain_from_elevation_points,
+        )
+
+        return {
+            "TerrainDerivatives": TerrainDerivatives,
+            "TerrainResult": TerrainResult,
+            "derive_terrain": derive_terrain,
+            "terrain_derivatives": terrain_derivatives,
+            "terrain_from_elevation_points": terrain_from_elevation_points,
         }[name]
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

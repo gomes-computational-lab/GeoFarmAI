@@ -47,3 +47,7 @@ class ConfigurationError(GeoFarmAIError, ValueError):
 
 class OptionalDependencyError(GeoFarmAIError, ImportError):
     """Raised when an explicitly requested optional feature is unavailable."""
+
+
+class TerrainProcessingError(GeoFarmAIError, ValueError):
+    """Raised when terrain inputs cannot support valid metric derivatives."""
