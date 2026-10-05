@@ -65,7 +65,7 @@ configuration interface.
 
 ## Installation
 
-GeoFarmAI currently supports Python 3.10 or later. From a source checkout,
+GeoFarmAI currently supports Python 3.10, 3.11 and 3.12. From a source checkout,
 create an isolated environment and install the base scientific package:
 
 ```bash
